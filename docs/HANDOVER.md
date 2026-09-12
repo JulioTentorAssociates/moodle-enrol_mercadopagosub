@@ -203,16 +203,10 @@ already respected when this component was named, before this session.
 
 **Not yet done, and larger than one session each:**
 
-- **PHPUnit suite.** `enrol_mercadopagocpro`'s own suite (65 tests, 191
-  assertions) caught three real defects no amount of reading would have —
-  an off-by-one in a truncation marker, a destroyed API error body, and a test
-  harness load-order bug. There is no reason to expect this plugin's own
-  service classes are defect-free without the same kind of exercise, and
-  several are more intricate than anything in the sibling (`event_processor`
-  and `payment_reconciler`'s shared sync path, the overdue heuristic,
-  `webhook_signature`'s HMAC construction). Per-class test coverage should
-  mirror the sibling's structure: one file per service class, plus the
-  `lib.php` plugin class itself.
+- **PHPUnit suite** — started 2026-09-12: 89 tests, 235 assertions, green.
+  See "The PHPUnit suite" below for what it covers and what it does not.
+  Still uncovered: `subscription_service`, `api_client`, `curl_transport`,
+  `collector`, `admin_setting_credential`, and the four scheduled tasks.
 - **Behat suite.** The sibling's real-browser, real-HTTPS acceptance tests are
   what actually proved the payment flow works end to end, not just each unit
   in isolation. This plugin has more state machine surface to exercise
@@ -839,13 +833,63 @@ than anything found this session.
     deletion removes the local row but cannot stop the subscription charging at
     Mercado Pago, and anonymising the row instead is a defensible alternative
     that a site with accounting-retention obligations would likely prefer.
-11. Next: `cli/diagnose.php`, then the PHPUnit suite, then Behat, then the
+11. Next: finish the PHPUnit suite (`subscription_service`, `api_client`,
+    `curl_transport`, `collector`, `admin_setting_credential`, the four
+    tasks), then `cli/diagnose.php`, then Behat, then the
     README/docs/CHANGES.md — see "Marketplace readiness checklist" above for
-    why this order (each later item is either larger in scope or depends on the
-    plugin actually running correctly first). The
-    PHPUnit suite should now include `privacy/provider` among its per-class
-    files; core's own `test_table_coverage` and `test_all_providers_compliant`
-    will exercise the metadata side for free once the suite runs at all.
+    why this order (each later item is either larger in scope or depends on
+    the plugin actually running correctly first).
+
+## The PHPUnit suite — started 2026-09-12
+
+**89 tests, 235 assertions, green**, and actually executed rather than only
+written: Moodle 5.2.2+ (commit `a987843`) on PHP 8.4.21 against PostgreSQL
+16.13. Six files, one per unit under test:
+
+| File | What it pins down |
+| --- | --- |
+| `util_test` | redaction, the truncation cap, reference minting and parsing, timestamp parsing |
+| `webhook_signature_test` | the documented manifest, tamper rejection, header parsing |
+| `credentials_test` | config.php > environment > settings precedence, and that no token reaches a diagnostic in full |
+| `event_processor_test` | enrolment on authorisation, idempotent replays, cancellation, foreign references, failure recording, group movement |
+| `payment_reconciler_test` | payment upsert, the overdue rule and its recovery, sweep ordering and limit |
+| `privacy_provider_test` | the subscriber/payer asymmetry in both export and deletion |
+| `plugin_test` | `can_subscribe()` in every branch, instance defaults |
+
+Plus `tests/helper_trait.php` (site setup, instance/subscription/event
+factories) and `tests/fixtures/mock_transport.php`, a scripted `transport`
+implementation. Mocking at the `transport` seam rather than at `api_client`
+is deliberate: it exercises `api_client`'s own error handling — the branch
+that carries the platform's error body into the exception — instead of
+stubbing it away.
+
+**Conventions worth keeping.** `#[CoversClass(...)]` attributes, not `@covers`
+docblocks: PHPUnit 11 emits a deprecation for metadata in doc-comments and
+PHPUnit 12 drops it. `print_r()` is a forbidden function under moodle-cs, so
+`credentials_test` checks the debug representation through `__debugInfo()`
+directly. Moodle returns ids from the database as strings, so identity
+comparisons against integer ids need an explicit cast — two privacy tests
+failed on exactly that before being fixed.
+
+**One finding worth Julio's decision, recorded rather than fixed.** The
+subscriber cap (`customint5`) counts only `trialing`/`active`/`overdue`, so a
+`pending` subscription — a checkout in flight — does not hold a seat. It
+blocks the person who owns it from starting a second one, but not anybody
+else, so a course capped at one subscriber can have two checkouts running at
+once and whichever authorises second gets a seat that was supposed to be
+taken. `plugin_test::test_a_pending_subscription_counts_against_the_cap`
+records the current behaviour and says so in a comment; if the cap is meant to
+hold a seat during checkout, that test is the one to change first.
+
+**How the suite was run, in case the numbers ever need reproducing.** It was
+executed in a sandbox with no access to packagist, so `vendor/` was assembled
+by hand from GitHub: PHPUnit 11.5.56 plus its dependency tree, with a
+generated PSR-4 autoloader and two small shims for the `Composer\` classes
+Moodle's own bootstrap probes for. Nothing in the plugin or in the tests knows
+about any of that, and on a normal site `moodle-plugin-ci` or a plain
+`composer install` is what should provide PHPUnit. **PHPUnit 12 cannot run
+Moodle 5.2** — `PHPUnit\Framework\TestCase::__construct()` is final there and
+`basic_testcase` overrides it — so pin 11.x.
 
 ## To confirm on a real site, at first install
 
