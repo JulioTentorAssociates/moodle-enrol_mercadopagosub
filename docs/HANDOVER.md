@@ -231,14 +231,9 @@ already respected when this component was named, before this session.
   in isolation. This plugin has more state machine surface to exercise
   (pending → trialing/active → overdue → ended, in both directions) than a
   single-payment plugin does.
-- **`cli/diagnose.php`.** The sibling's version checks installation, capability
-  wiring, HTTPS, credentials, tasks, and simulates an instance save — and three
-  of its own checks were themselves wrong before being corrected against a real
-  site (a CLI script's `$USER->id = 0`, a `===` on a count, and PHP 8's
-  `validate_param_types()` rejecting `''` where a browser posts `0`). Writing
-  this plugin's version should expect the same category of false alarm and
-  budget time to verify each check against Julio's actual site rather than
-  trusting it once it runs without a fatal error.
+- ~~**`cli/diagnose.php`**~~ — written and exercised 2026-09-12, see "The
+  diagnostics script" below. The warning recorded here was right: three of its
+  checks were wrong on first run, and only running it found them.
 - ~~**phpcs, `moodle-extra` standard**~~ — done 2026-09-12, see "The style
   pass" below. The tree is at 0 errors, 0 warnings.
 - ~~**Privacy provider.**~~ Written 2026-09-12 — see the section above.
@@ -854,12 +849,11 @@ than anything found this session.
     deletion removes the local row but cannot stop the subscription charging at
     Mercado Pago, and anonymising the row instead is a defensible alternative
     that a site with accounting-retention obligations would likely prefer.
-11. Next: finish the PHPUnit suite (`subscription_service`, `api_client`,
-    `curl_transport`, `collector`, `admin_setting_credential`, the four
-    tasks), then `cli/diagnose.php`, then Behat, then the
-    README/docs/CHANGES.md — see "Marketplace readiness checklist" above for
-    why this order (each later item is either larger in scope or depends on
-    the plugin actually running correctly first).
+11. Next: Behat, then the README, `docs/INSTALL.md`,
+    `docs/TROUBLESHOOTING.md` and `CHANGES.md`, then the screenshots the
+    plugins directory listing requires. The PHPUnit suite and
+    `cli/diagnose.php` are done; what is left is either a real browser or
+    prose.
 
 ## The PHPUnit suite — started 2026-09-12
 
@@ -929,6 +923,51 @@ about any of that, and on a normal site `moodle-plugin-ci` or a plain
 `composer install` is what should provide PHPUnit. **PHPUnit 12 cannot run
 Moodle 5.2** — `PHPUnit\Framework\TestCase::__construct()` is final there and
 `basic_testcase` overrides it — so pin 11.x.
+
+## The diagnostics script — 2026-09-12
+
+`cli/diagnose.php`, shaped after the sibling's but answering this plugin's own
+question: *why can nobody subscribe to this course?* Seven sections —
+installation, capabilities, site requirements, credentials, scheduled tasks,
+current state, and an optional per-course check — each ending in OK, WARN or
+FAIL with the fix spelled out. Exit status is 1 only when something is
+actually broken; warnings alone exit 0, so it is safe to run from a monitoring
+job.
+
+**It was exercised against a real installed Moodle**, not only linted: a 5.2.2+
+site installed in the sandbox with the plugin enabled, a course, a learner
+account, and both a working and a deliberately broken configuration. That is
+what found the following, all of which read as correct code until run:
+
+- **Three false failures for a learner.** With `--username=alumno`, the
+  configuration capabilities (`moodle/course:enrolconfig`,
+  `enrol/mercadopagosub:config`, `can_add_instance()`) were reported FAIL —
+  but a learner is *supposed* to lack them, and the script exited 1 on a
+  perfectly healthy site. They are now warnings when a username was given and
+  failures only when evaluating as the admin, and the course section is split
+  into "Managing the method" and "Subscribing to it".
+- **The capability that actually matters to a learner was not checked at all.**
+  `enrol/mercadopagosub:subscribe` is what decides whether the button is ever
+  shown; it is now the first check in the subscriber block.
+- **The save simulation ran for users who cannot save.** Posting a form as a
+  learner tells nobody anything; it is skipped with a note to re-run as admin.
+- **`can_subscribe()` was skipped exactly when it was most wanted.** The
+  instance list was read before `--tryadd` created one, so a course with no
+  instance yet showed nothing. It is re-read afterwards.
+- **A transport failure was reported as `HTTP 0`.** Measured on a host with no
+  route to api.mercadopago.com: an exchange that never completed and a
+  platform that refused the credentials are different problems — outgoing
+  network versus the token — and reporting both the same way sends an
+  administrator looking in the wrong place. They are now separate branches,
+  the first carrying the curl error.
+
+**Known limits.** `--checkaccount` is the only option that touches the
+network, and it is opt-in for that reason. The script cannot tell whether the
+notification URL is actually registered at Mercado Pago — that is dashboard
+configuration with no API to read it back — so it prints the URL and says to
+register it. And the verdicts it gives for a named user are that user's own:
+run it twice, once as the teacher who cannot add the method and once as the
+learner who cannot subscribe, because they fail for different reasons.
 
 ## To confirm on a real site, at first install
 
