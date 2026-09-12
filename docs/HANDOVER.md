@@ -1,0 +1,833 @@
+# enrol_mercadopagosub — handover
+
+State as of 2026-08-31, continuously updated since. **The design is frozen at
+v1**: what follows is settled and should be implemented, not relitigated.
+Reopen an item only if implementation produces evidence against it, and say
+which evidence.
+
+Everything asserted here was verified against the live Mercado Pago API or against
+Moodle 5.2 source, not recalled.
+
+Companion documents: `API-FINDINGS.md` holds the platform measurements and the
+reportable documentation gaps. `probe.php` and `whoami.php` are the throwaway CLIs
+that produced them.
+
+## Coexistence with enrol_mercadopagocpro — confirmed 2026-09-12
+
+Julio's decision: this plugin will run on the same Moodle instance as
+`enrol_mercadopagocpro`, each with its own credentials and its own Mercado Pago
+application. Checked against the actual code, not assumed — every axis that
+could collide is already component-scoped, by construction, with nothing new
+needed:
+
+- **Credentials.** `MERCADOPAGOSUB_ACCESS_TOKEN`/`_PUBLIC_KEY`/`_WEBHOOK_SECRET`
+  (env) and `$CFG->enrol_mercadopagosub` (config.php) — distinct names from
+  `mercadopagocpro`'s own `MERCADOPAGOCPRO_*`/`$CFG->enrol_mercadopagocpro`,
+  confirmed in `classes/credentials.php`.
+- **Site settings.** `get_config('enrol_mercadopagosub', ...)` throughout —
+  Moodle's config API is already component-scoped; no shared key is possible.
+- **Database tables.** `enrol_mercadopagosub_sub`/`_payment`/`_event` — the
+  component prefix is baked into every table name in `db/install.xml`.
+- **Capabilities.** Every one is `enrol/mercadopagosub:*` (`db/access.php`).
+- **Scheduled tasks.** Every classname is under `enrol_mercadopagosub\task\`
+  (`db/tasks.php`) — cannot collide with `enrol_mercadopagocpro\task\*`.
+- **Message provider.** `'expiry_notification'` is only ever referred to as
+  `enrol_mercadopagosub/expiry_notification` by core, even if
+  `enrol_mercadopagocpro` happens to use the same short name for its own —
+  full identity always includes the component.
+- **Webhook URL.** `/enrol/mercadopagosub/webhook.php`, structurally distinct
+  from `/enrol/mercadopagocpro/webhook.php` by directory alone.
+- **Global function names.** `webhook.php` declares
+  `enrol_mercadopagosub_query_param()` — already prefixed; cannot collide with
+  a same-purpose helper in the sibling plugin as long as it follows the same
+  convention.
+- **`pluginname`.** Already `"Mercado Pago Subscriptions"` — distinct from
+  `"Mercado Pago Checkout Pro"`. This one is worth calling out by name: a real
+  bug shipped in `enrol_mercadopagocpro` where its own `pluginname` string
+  still read a stale, indistinguishable value, which would have shown two
+  identical entries in a course's "Add method" dropdown once both plugins
+  were installed together. This plugin never had that string wrong, but the
+  lesson is exactly why this whole section exists rather than assuming
+  coexistence is fine by default.
+- **Enrol instance rows.** Each course gets a separate `enrol` table row per
+  plugin (`enrol = 'mercadopagosub'` vs `'mercadopagocpro'`), each with its own
+  `customint1`-`customint8`/`customchar1`-`customchar3` — Moodle's own
+  architecture for multiple enrolment methods per course, not something either
+  plugin has to coordinate.
+
+**Confirmed, not just structurally sound but operationally required — each
+plugin needs its own Mercado Pago application** for the notification URL to be
+distinct (`API-FINDINGS.md`'s own finding that a Notification URL is
+application-level, one per application). This was already known before this
+session; Julio's decision to run both plugins together is what makes it a live
+requirement rather than a hypothetical. **Nothing to build for this — it is a
+Mercado Pago dashboard configuration step, not code**, but worth stating
+plainly in `docs/INSTALL.md` when that gets written, since installing both
+plugins with the same application by mistake would have each plugin's webhook
+processor treating the other's notifications as `ignored` (harmless, per
+`event_processor`'s own "not ours" branch) but silently losing real events for
+whichever plugin's application wasn't actually registered.
+
+## Marketplace readiness checklist — added 2026-09-12
+
+Julio asked that everything learned bringing `enrol_mercadopagocpro` to a
+publishable state be incorporated here too. This is that checklist, each item
+checked against this plugin's actual current tree, not assumed carried-over.
+
+**Naming — already satisfied.** `mercadopagosub` is 14 characters (limit is 20,
+learned the hard way from `mercadopagocheckoutpro` at 22 failing outright under
+strict SQL mode) and contains no underscore (`enrol_plugin::get_name()` splits
+on `_`, which is what broke `enrol_mp_checkoutpro`). Both constraints were
+already respected when this component was named, before this session.
+
+**Not yet done, and larger than one session each:**
+
+- **PHPUnit suite.** `enrol_mercadopagocpro`'s own suite (65 tests, 191
+  assertions) caught three real defects no amount of reading would have —
+  an off-by-one in a truncation marker, a destroyed API error body, and a test
+  harness load-order bug. There is no reason to expect this plugin's own
+  service classes are defect-free without the same kind of exercise, and
+  several are more intricate than anything in the sibling (`event_processor`
+  and `payment_reconciler`'s shared sync path, the overdue heuristic,
+  `webhook_signature`'s HMAC construction). Per-class test coverage should
+  mirror the sibling's structure: one file per service class, plus the
+  `lib.php` plugin class itself.
+- **Behat suite.** The sibling's real-browser, real-HTTPS acceptance tests are
+  what actually proved the payment flow works end to end, not just each unit
+  in isolation. This plugin has more state machine surface to exercise
+  (pending → trialing/active → overdue → ended, in both directions) than a
+  single-payment plugin does.
+- **`cli/diagnose.php`.** The sibling's version checks installation, capability
+  wiring, HTTPS, credentials, tasks, and simulates an instance save — and three
+  of its own checks were themselves wrong before being corrected against a real
+  site (a CLI script's `$USER->id = 0`, a `===` on a count, and PHP 8's
+  `validate_param_types()` rejecting `''` where a browser posts `0`). Writing
+  this plugin's version should expect the same category of false alarm and
+  budget time to verify each check against Julio's actual site rather than
+  trusting it once it runs without a fatal error.
+- **phpcs, `moodle-extra` standard, from inside the plugin directory with an
+  explicit `--standard`.** Not run yet against this tree at all. The sibling
+  reached 0 errors/0 warnings only after a dedicated pass; expect findings here
+  too, especially around the newer files (`payment_reconciler`,
+  `event_processor`) that grew large across several sessions without a lint
+  pass in between.
+- **Privacy provider.** Already flagged below as the next concrete task —
+  repeating here only to place it in this checklist explicitly: it is a
+  contribution-checklist requirement for the plugins directory, independent of
+  whether local testing needs it.
+- **README, `docs/INSTALL.md`, `docs/TROUBLESHOOTING.md`, `CHANGES.md`.** None
+  exist yet. `docs/INSTALL.md` already has a running list of notes owed to it,
+  below — that list should become the actual document, not stay a scratch pad.
+- **Screenshots**, required by the plugins directory listing itself, not by
+  the code. Cannot happen before there is a working UI to screenshot, which
+  means after the Behat suite is green on a real site, not before.
+
+**Confirmed already in place, no action needed:** GPL v3 headers on every file
+written so far; `version.php`'s `$plugin->maturity = MATURITY_ALPHA` and
+`$plugin->release = 'v0.1.0'`, both honest about where this actually stands;
+no vendored SDK to track against `thirdpartylibs.xml`, since this plugin talks
+to the Mercado Pago API directly over `curl_transport` rather than through a
+vendored library — a design decision already recorded below, and one that
+sidesteps an entire category of the sibling's own maintenance burden (SDK
+version drift, composer artefacts accidentally committed).
+
+**Still open from before this session, unresolved by it:** `$plugin->requires
+= 2026042002` remains unverified against `public/version.php` on
+`MOODLE_502_STABLE` — see "To confirm on a real site" below.
+
+## Where this stands
+
+Written and reviewed: `version.php`, `db/install.xml`, `db/access.php`,
+`db/caches.php`, `db/tasks.php`, `db/messages.php`, `lib.php`, `settings.php`,
+`subscribe.php`, `paymentlink.php`, `webhook.php`,
+`lang/en/enrol_mercadopagosub.php`, and the service layer under `classes/`:
+`util`, `credentials`, `transport`, `curl_transport`, `http_response`,
+`api_client`, `api_exception`, `collector`, `admin_setting_credential`,
+`subscription_service`, `webhook_signature`, `event_processor`,
+`payment_reconciler`, `form/subscribe_form`, `task/send_expiry_notifications`,
+`task/process_expirations`, `task/process_events`, `task/reconcile_payments`.
+
+Not written yet: the privacy provider, `cli/diagnose.php`, tests, docs.
+
+**`payment_reconciler` is written — every table and every state transition this
+plugin's schema anticipated now has something actually writing to it.**
+`enrol_mercadopagosub_payment` (present in `db/install.xml` since before this
+session's involvement, untouched until now) gets a row per authorized payment,
+upserted by `mppaymentid` so a repeat sweep updates rather than duplicates. It
+runs on its own fixed schedule — every 15 minutes — sweeping every row with
+`state` in `trialing`/`active`/`overdue`, deliberately not triggered by any
+specific webhook. This follows directly from the reasoning already recorded
+against `event_processor`: webhook delivery is measurably unreliable
+(`version` gaps mean some notifications never arrive), so a subscription this
+plugin has not heard from in a while must still get checked on its own.
+
+**`event_processor` and `payment_reconciler` now share one sync path,
+deliberately.** `sync_from_response()` and `sync_enrolment()` were made public
+on `event_processor` specifically so `payment_reconciler` calls the same
+enrolment/group logic after its own independent `GET /preapproval/{id}`,
+rather than a second, divergent copy existing. A subscription's access should
+never depend on which of the two paths happened to notice a change first.
+
+**Overdue detection follows from what is left after both syncs run**, and
+this is a new construction, not something Mercado Pago's own API states
+directly: if `nextpaymentdate` (just re-synced from a fresh `GET`) has passed
+and no `enrol_mercadopagosub_payment` row with `status = 'processed'` covers
+it, local `state` becomes `overdue` — `dunningstage` resets to 0 and
+`dunningsince` records the moment. Recovery is symmetric: once a covering
+payment is found, `state` returns to `active`. **`'processed'` is the only
+authorized-payment status this plugin has ever actually measured for a
+completed charge** (`API-FINDINGS.md` §3) — no other status value has been
+observed, so this heuristic treats every other status as "not yet paid for
+this period," which is conservative rather than confirmed. **To confirm on a
+real site:** what an authorized_payment record's `status` reads during an
+actual missed or retried charge — this plugin has only ever seen one that
+succeeded on the first attempt.
+
+**`periodstart`/`periodend` on each payment row are this plugin's own
+bookkeeping, not something the API returns.** Computed as the charge's
+`debit_date` through one billing period later (`frequency`/`frequencytype`,
+already on the subscription row), matching `API-FINDINGS.md` §3's own framing
+that `next_payment_date` can be treated directly as the end of a paid period,
+anchored to authorisation rather than creation. Left at 0 for any payment
+whose status is not `'processed'`, for the same reason the overdue heuristic
+above is conservative rather than assumed.
+
+**Three things from the previous session's judgement calls remain exactly as
+flagged, now touched by more code and worth re-reading before sign-off:**
+trial detection is still deferred, not implemented; `signaturestatus` still
+does not gate whether an event gets acted on; `ended` still only withdraws
+group membership, leaving the core enrolment's `timeend` to lapse naturally.
+Nothing in this session's reconciliation work resolved any of the three — it
+built on top of all of them.
+
+## Julio's review, 2026-09-02 — two of the three flagged judgement calls resolved
+
+**`signaturestatus` now gates action — Julio overruled the previous session's
+reasoning explicitly.** `event_processor` no longer dispatches an event unless
+`signaturestatus === 'verified'`. `failed` and `absent` rows are still written
+(attempts incremented, a `lasterror` set) but never acted on; they need
+`requeue_unverified()` called by hand once whatever caused them is fixed —
+typically an empty `webhooksecret`. **Operational consequence for testing:**
+until the webhook secret is actually set in `settings.php`, every event will
+sit as `failed` forever, dispatching nothing. `payment_reconciler` is
+unaffected — it never reads webhook bodies at all, verified or not, so
+`overdue` detection and payment recording keep working independently of this.
+
+**`ended` after cancellation-with-a-payment-already-taken is confirmed as
+designed: access continues until the paid period ends.** Julio resolved the
+contradiction this file's own trial/cancellation notes contained (one passage
+said continued access, another said immediate suspension) explicitly in favour
+of continued access. No code changed for this — `event_processor`'s existing
+behaviour (leave `timeend` to lapse via `process_expirations()`) already
+matches it.
+
+**Cancelling during an unfinished trial needs no new measurement, by Julio's
+own design choice.** Rather than resolve whether Mercado Pago reports
+`pending` or `authorized` while a trial is in progress, access during a trial
+that gets cancelled before it ends simply continues until the trial's own end
+date — the same `nextpaymentdate`-driven `timeend` mechanism already handles
+this, since `nextpaymentdate` lands on the trial's end date regardless of
+`mpstatus` (API-FINDINGS.md §2). This sidesteps the open trial-detection
+question for this specific case; **trial detection itself remains deferred**
+for the separate, still-open question of which local state
+(`trialing` vs `active`) a currently-authorized subscription should show while
+a trial is running.
+
+**No second trial.** `subscription_service::has_had_trial()` checks, per
+instance, whether this user has ever had a row with `trialfrequency` set —
+including `ended` rows, since rows are never deleted. If so, the new
+subscription is created without `free_trial` regardless of the instance's own
+trial setting, and its own row correctly records no trial rather than a trial
+it never actually got. Scoped to the course/instance, not the whole site,
+matching Julio's decision note verbatim ("verificar si el usuario ya ha tenido
+un trial en ese curso").
+
+## Julio's testing and review, 2026-09-02 (second round)
+
+**Correction to what this file said above: there was never a missing
+self-cancellation flow.** Mercado Pago's own subscriber panel already offers
+cancellation — Julio confirmed this from his own testing with a test buyer
+account. The "real gap" flagged above was this session misreading the design:
+`enrol/mercadopagosub:cancelsubscription` staying `manager`-only was already
+correct. What a subscriber cancels through their own Mercado Pago account
+reaches this plugin as an ordinary `subscription_preapproval` webhook, which
+`event_processor` already handles.
+
+**A different, genuine gap Julio's testing did surface: Moodle's own "Unenrol
+me" self-service action did not touch the Mercado Pago subscription at all.**
+`enrol/mercadopagosub:unenrolself` is granted to `student` (matching
+`enrol_self`'s convention, `db/access.php`), and using it removed the user from
+the course while leaving Mercado Pago charging them every cycle — Moodle and
+the platform simply disagreed, silently. **Fixed by overriding
+`unenrol_user($instance, $userid)` in `lib.php`.** This is the core hook every
+unenrolment path routes through — self-service and manager-initiated alike —
+so this override closes both at once. It cancels every non-`ended` local row
+for that enrolid/userid at Mercado Pago, sets `endreason = 'cancelled_by_admin'`
+with certainty (this plugin initiated it, no guessing needed here unlike the
+webhook-driven path), and moves the user into the new cancelled group if one is
+configured. `parent::unenrol_user()` always runs regardless of whether the
+Mercado Pago call succeeded — a network hiccup must not block a Moodle
+unenrolment. **Known residual gap, flagged not solved:** a row that fails to
+cancel here is left in its current state, and nothing currently retries it.
+This is the opposite problem from what `payment_reconciler` watches for (a
+charge that should stop but might not, rather than one that should have
+arrived and didn't), and is not covered by it.
+
+**The third group Julio asked for is built — `customint8`, "cancelled or ended
+subscriptions."** Same shape as `customint1`/`customint2`: a plain
+group-picker on the instance form, no site-level meaning attached. Membership
+is granted whenever local `state` becomes `ended`, from both places that can
+cause that: `event_processor::sync_enrolment()` (a webhook or a reconciliation
+sweep observing `mpstatus = cancelled`) and the new `unenrol_user()` override
+above. What a site does with this group — content restrictions, nothing at
+all — stays entirely outside the plugin, per Julio's own reflection below.
+
+**One `endreason` question remains genuinely open, not resolved this
+session:** whether Mercado Pago's `cancelled` status distinguishes a
+subscriber cancelling in their own Mercado Pago panel from the platform
+cancelling for its own reasons (persistent non-payment, most plausibly).
+Nothing measured so far shows a field that would tell them apart — both land
+on `endreason = 'cancelled_by_mp'`, the honest generic bucket for "not
+something this plugin's own code initiated." Only the `unenrol_user()` path
+gets to claim `'cancelled_by_admin'` with real certainty. Worth a targeted
+`probe.php` run if this distinction ever needs to be surfaced to a site's own
+support process — not attempted here, since Julio explicitly chose to avoid
+that round of measurement this session for the trial-cancellation question,
+and this is the same underlying gap, not a new one.
+
+## The plugin/business boundary, per Julio's own reflection, 2026-09-02
+
+Not yet acted on in code, recorded here because it should shape what gets built
+next: Julio flagged that some of what his own decision notes described
+(dedicated trial and cancelled-user groups, their naming, what content they
+gate) is his business's own configuration of the plugin's existing generic
+mechanism (group membership toggling on state transitions), not something the
+plugin itself needs to know about. The plugin's job stops at "this state
+transition happened, membership in whatever group this site configured now
+matches it" — what a site does with a "cancelled" group, if it configures one
+at all, is out of scope. The third group above follows this shape exactly: the
+plugin only ever toggles membership, and Julio was explicit that whether any
+other site finds it useful "no es algo que me compete" — it is offered as a
+generic mechanism, not a business-specific feature.
+
+**Discount/coupon support was raised and deliberately deferred**, as a real
+feature for a future iteration, not this one — it touches the amount sent to
+Mercado Pago and needs its own validation, which is a large enough change to
+warrant its own design pass rather than folding into whatever session it gets
+mentioned in.
+
+**`event_processor` is written — this plugin now completes a subscription end
+to end for the one notification type that carries usable identity.** It reads
+`enrol_mercadopagosub_event` where `processstatus = 'queued'`, and for
+`subscription_preapproval` events: re-fetches by `resourceid` (the preapproval
+id), reads `external_reference` from that response, finds the local row by it,
+syncs `mpstatus`/`nextpaymentdate`/`payerid`/`paymentmethodid`, and — new this
+session — actually calls `enrol_user()`/`update_user_enrol()` and adds or
+removes the paid/trial group (`customint1`/`customint2`) to match. Before this,
+nothing in the plugin ever granted course access; syncing local subscription
+state alone was not the same as a subscriber actually getting into the course.
+
+**Trial detection is explicitly deferred, not guessed at.** Mercado Pago's
+`status` only reports `pending`/`authorized`/`paused`/`cancelled` — nothing
+measured so far distinguishes "authorized, inside its free trial" from
+"authorized, paying normally" at the subscription level. Every transition into
+`authorized` is treated as local `active`. `event_processor`'s own docblock
+says this is unmeasured, not assumed; the `trialing` state and `customint2`
+group can exist in the schema and the mform without this session inventing when
+they should actually apply. **To confirm on a real site:** what a `GET
+/preapproval/{id}` or a webhook reports about a subscription while a
+`free_trial` is genuinely in progress.
+
+**`payment`, `subscription_authorized_payment`, and `subscription_preapproval_plan`
+events are marked `processed` immediately, doing nothing else.** This is a
+deliberate design choice made this session, not previously frozen: rather than
+have these notifications "trigger" a per-event reconciliation sweep, the
+still-unwritten reconciliation task is meant to run on its own fixed schedule
+against every locally active subscription, independent of any specific webhook
+arriving. Webhooks are demonstrably unreliable as a trigger signal — `version`
+gaps were measured with no data loss, meaning some deliveries never arrive at
+all — so a fixed sweep is the only path that does not depend on delivery. This
+reasoning is recorded here for review, not settled as frozen design.
+
+**Acting on an event never depends on `signaturestatus`.** This was reasoned
+through explicitly this session, using the same fact the schema's own comment
+states: `payload` is "never a source of truth." Every action in
+`event_processor` re-derives its facts from a fresh, credential-authenticated
+API call keyed only by a resource id — never from anything the notification
+body claimed. A forged notification therefore cannot make this plugin believe
+something Mercado Pago itself did not just confirm; at worst it causes a
+harmless, sooner-than-scheduled re-check of one of this site's own
+subscriptions. `signaturestatus` is still recorded on every row for audit and
+future anomaly detection, just not consulted before acting. Flagged for review,
+since it is this session's judgement call and not a prior measurement.
+
+**Withdrawing access on `ended` is limited to group membership, not the core
+enrolment.** The enrolment's own `timeend` — already set to `nextpaymentdate`
+plus the configured grace period — is left to lapse on its own via
+`process_expirations()` rather than being cut short immediately on
+cancellation, on the reasoning that a subscriber who cancels has already paid
+for the period they are currently in. Also this session's judgement call, not
+previously settled, and worth Julio's explicit sign-off given it is a real
+product/billing decision, not a technical one.
+
+**`webhook.php` is written and does exactly three things: verify, persist,
+answer 200. It makes no business decision and looks up nothing.** This was the
+one design question flagged as able to force a real change, and it is now
+closed on measurement, not on this session's judgment — see "This settles
+webhook.php's handling, definitively" above, from the capture sessions.
+
+**The signature manifest is confirmed, not assumed — it was explicitly left
+unverified in an earlier session and that gap is now closed.** `manifest =
+"id:{data.id};request-id:{x-request-id};ts:{ts};"`, HMAC-SHA256 with the
+webhook secret, hex digest compared against `v1` with `hash_equals()`. Checked
+against Mercado Pago's own developer documentation and cross-referenced with
+independent third-party implementations, all agreeing. `webhook_signature`
+lowercases the id defensively before hashing — one source did this, none of
+this plugin's own captures showed it would matter (every id captured was
+already lowercase hex), and it costs nothing to keep.
+
+**`data.id` is read from the raw query string, not `$_GET`.** PHP rewrites a
+`data.id` query key to `data_id` before user code ever sees it — a genuine gotcha
+that would have silently broken every signature check if missed. `webhook.php`
+parses `$_SERVER['QUERY_STRING']` itself rather than trusting the superglobal.
+
+**Deliberately not using `ABORT_AFTER_CONFIG`.** `enrol_mercadopagocpro`
+shipped exactly the mistake of defining that constant at all — which aborts
+setup regardless of its value — while apparently intending the opposite. Rather
+than risk a second, different bootstrap-order problem (whether autoloading and
+`get_config()` are reliably available in that reduced mode, which this project
+has not measured), `webhook.php` takes the full, ordinary bootstrap and
+`require_once`s the three class files it needs directly by path, so its
+correctness does not depend on how much of `setup.php` ran.
+
+**Signature verification never blocks a response.** A `failed` or `absent`
+status is written to the row and the endpoint still answers 200 — enforcement
+happens when the processing task decides whether to trust a row, not at the
+door. This is what lets the endpoint be genuinely decision-free while still
+giving whoever writes that task everything needed to fail closed on it later.
+
+**No deduplication of deliveries.** Mercado Pago is known to resend the same
+logical event (`version` gaps observed with no data loss), and this file simply
+inserts a new row every time, matching "no decisions in the request" literally.
+Idempotency is the processing task's problem to solve by re-fetching current
+state via `GET`, not this endpoint's problem to solve by guessing which
+deliveries are duplicates.
+
+**`subscription_service` is written, and `subscribe.php` is now functional end
+to end.** It builds the request body exactly to the shape `probe.php`'s
+`baseline_body()` measured as working — `reason`, `external_reference`,
+`payer_email`, `auto_recurring` (`frequency`, `frequency_type`,
+`transaction_amount`, `currency_id`, plus `free_trial` when `customint3 > 0`),
+`back_url`, `status: "pending"`. `notification_url` is deliberately not sent —
+API-FINDINGS.md §1 measured it as silently discarded. `util::make_reference()`
+and `util::parse_reference()` already existed from an earlier session and are
+used as written, not reimplemented.
+
+`guest_site_mismatch` is caught by `api_exception::get_api_code()` and rethrown
+as a learner-facing `moodle_exception` using the `error:mismatchedsite` string
+that already existed in the lang file. Every other `api_exception` is left
+unwrapped and propagates as-is — wrapping it would throw away the platform's own
+error code and body that `api_exception` already carries for whoever catches it
+further up.
+
+**`init_point` has no column.** It varies in shape by site and drops its
+`&activation=true` once authorised (API-FINDINGS.md §11), so it is not
+reconstructable from other columns and is not worth a dedicated one either. It
+is stored, verbatim, inside the existing `extras` JSON column — the column the
+schema itself describes as "for anything that does not warrant a column."
+`paymentlink.php` reads it from there.
+
+**Do not run `subscribe.php` against production credentials until `webhook.php`
+exists.** It now makes a real, tested-shape Mercado Pago API call — a
+subscriber can genuinely pay — and nothing yet updates the local row when they
+do, since that is `webhook.php`'s job.
+
+**`paymentlink.php` reads, never calls the API.** It decodes `initpoint` from
+`extras` on the local row and shows it two ways at once — a readonly text field
+for copying, and a direct link for opening — deliberately, because the frozen
+design says payer and learner are routinely different people and this page
+cannot know in advance which one is looking at it. The status line shown is
+this plugin's own last-known local `state`, not a live check: nothing exists
+yet that would update it after creation, since that is `webhook.php`'s job.
+
+**Access is owner-or-capability, not capability alone.** The subscriber who
+owns the row can always see their own payment link; anyone else needs
+`enrol/mercadopagosub:viewsubscriptions` or `:manage`. This matters because the
+URL carries only a numeric `subid` — nothing else identifies the request, so
+the capability check is the only thing stopping one subscriber from viewing
+another's live checkout link by guessing or incrementing the id.
+
+**`subscribe_form` asks for one field that matters** — `payeremail` — prefilled
+from this user's most recent `enrol_mercadopagosub_sub` row **across all
+instances**, not scoped to this course, on the reasoning that what matters is
+which address a person tends to pay from, not which course they last paid on.
+Falls back to their Moodle account email when they have no prior row. A
+`payeremailisthirdparty` checkbox is present and purely informational — nothing
+in the code branches on it. It exists because ticking a box that says "someone
+else is paying" before typing an address, catches the "typed my own address out
+of habit" mistake that `API-FINDINGS.md` §12 establishes cannot be corrected
+afterwards (`payer_email` is immutable once the subscription exists). If this
+turns out to want real behaviour later (e.g. a separate payer-name field), that
+is a genuine scope decision, not an oversight.
+
+**`subscribe.php` calls `can_subscribe()` twice**, once before rendering the
+form and once after a valid submission. The second call is not redundant: the
+form's own render-to-submit window is exactly when a second tab, or simply time
+passing, could put the user in a state `can_subscribe()` would now refuse (most
+concretely: they already started a subscription in another tab in the
+meantime).
+
+**Correction to what this file said in the previous session:** `expiredaction`
+does not need `process_expirations()` overridden in `lib.php`. Confirmed against
+current MoodleDev documentation
+(moodledev.io/docs/.../apis/plugintypes/enrol): "*Plugins that set `timeend`...
+may want to specify expiration action and optional expiration notification
+**using** `enrol_plugin::process_expirations()` and
+`enrol_plugin::send_expiry_notifications()` methods*" — both already contain
+working logic in the base class. What MDL-66786 actually shows is a plugin that
+declared the setting but never registered a scheduled task to call the method
+that reads it. `db/tasks.php` now registers two such tasks, each a thin wrapper
+calling the corresponding inherited method with a `text_progress_trace`. No
+override was added to `lib.php`, and per the above, none should be.
+
+**`db/messages.php`** declares one message provider, `expiry_notification` —
+the same identifier `enrol_self` and `enrol_manual` use for the same core
+method, which is the convention core expects rather than an arbitrary choice.
+The four `expirymessage*` strings it sends through were added to the lang file,
+reworded for a subscription context: the enrolled-user body explicitly notes
+that this concerns the enrolment period, not the Mercado Pago subscription's own
+billing, since those two clocks are independent in this design.
+
+**Deliberately not added yet:** a Mercado Pago reconciliation task (sweeping
+`authorized_payments/search` for each locally known active subscription,
+mirroring `reconcile_payments` in `enrol_mercadopagocpro`). It depends on the
+local subscription state table and `subscription_service`, neither of which
+exists. Registering a task with nothing real to run would repeat the exact
+mistake `expiredaction` made before this session — see `db/tasks.php`'s own
+docblock.
+
+**`settings.php` is deliberately narrower than a full site-defaults page.** It
+covers credentials (with `admin_setting_credential`, a small subclass that calls
+`collector::forget()` when the access token actually changes — the cache has no
+other way to notice), `expiredaction`, `expirynotifyhour`, and the currency
+override. Instance-level defaults (role, billing frequency, grace period, welcome
+message) are not registered as admin settings; `defaults_for_new_instance()`
+already falls back to a coded default via `$this->get_config($name, $default)`
+when no setting exists, so this is a real gap only once a site needs to change
+one of those defaults from the UI, not before.
+
+**`expirynotifylast` was considered and deliberately left out of `settings.php`.**
+It does not appear as an `admin_setting` in any enrol plugin checked
+(`enrol_manual`, `enrol_self`, `enrol_credit`, `enrol_apply`). Everything found
+suggests it is bookkeeping the core expiry-notification method writes to itself
+via `set_config()` on every run, not something an administrator sets from a
+screen — consistent with `send_expiry_notifications()` now actually running via
+`task/send_expiry_notifications.php`.
+
+Nothing in the tree has been run inside Moodle yet. No file has been executed, no
+suite exists, and the plugin has not been installed on a site. Treat every class
+as reviewed-but-unrun.
+
+## Settled decisions, and why
+
+**Subscription model: plan-less, `status: "pending"`, redirect to `init_point`.**
+The alternative with an associated plan requires `card_token_id` when driven from
+a server, which would put card handling inside Moodle. Measured, not assumed.
+
+**No vendored SDK.** Four endpoints, all exercised over plain HTTP during design.
+`transport` is an interface and `curl_transport` implements it, so the decision is
+reversible by writing one class. The interface contract that matters: a transport
+must not throw on a 4xx, because the platform's error body is the only diagnostic
+it gives.
+
+**The payer address is binding and immutable.** Only an account holding the
+declared `payer_email` can authorise the subscription. `PUT` accepts a new address,
+returns 200, and discards it without touching `last_modified`. Correction means
+cancel and recreate. The plugin must therefore ask for the address, store it in its
+own column, and offer a self-service way to change payer.
+
+**Payer and learner are routinely different people.** An employer or client company
+pays for someone else's course. Consequences: `init_point` must be presented as a
+copyable link, not only as a redirect; email addresses are not redacted, because
+they are billing data needed for support; and the plugin communicates only with the
+learner. If the payer stops paying, the learner loses access and sorting that out
+is the learner's problem, not the site's.
+
+**Currency follows the collecting account, not a country list.** `collector` reads
+the account endpoint, caches it, and derives the currency from `site_id`. Freezing
+a country list is what has produced one Mercado Pago plugin per country in the
+directory. An unrecognised site falls back to a site setting.
+
+**Financial capabilities default to `manager` only**, departing from `enrol_self`,
+which grants `:config` to `editingteacher`. Documented in `db/access.php` including
+how to revert.
+
+**Local state machine: `pending`, `trialing`, `active`, `overdue`, `ended`.**
+`ended` is terminal with an `endreason`; returning means a new row at current
+prices. That rule removes the undocumented case of resuming a paused subscription
+after `next_payment_date` has passed, because the plugin never resumes.
+
+**Mercado Pago `paused` is not used.** Only `cancelled`. Everything between "still
+a subscriber" and "gone" is represented in Moodle.
+
+## The account endpoint, measured 2026-08-31
+
+`GET /users/me` with a test seller's own credentials, HTTP 200. Complete key list:
+
+    id, nickname, registration_date, first_name, last_name, gender, country_id,
+    email, identification, address, phone, alternative_phone, user_type, tags,
+    logo, points, site_id, permalink, seller_experience, bill_data,
+    seller_reputation, buyer_reputation, status, company, credit, context,
+    registration_identifiers, test_data
+
+Three things follow, and all three are now reflected in `collector`.
+
+**There is no currency field.** Not at the top level and not nested. The
+`SITE_CURRENCY` mapping stays; it cannot be replaced by reading the account. This
+closes the open question that stood against it.
+
+**Test accounts identify themselves structurally.** `tags` contains `test_user`,
+and a `test_data` object carries `test_user: true`, `is_custom_test_user`,
+`client_id` and `user_owner`. `is_test_account()` now reads `test_data.test_user`
+first and `tags` second, keeping the `TESTUSER` nickname prefix only as a fallback.
+The prefix alone was the wrong test: `is_custom_test_user` exists, so a test
+account need not carry a generated nickname. Not yet measured: what a **real**
+seller account returns for these keys. Absence is handled — it falls through to
+false — so the failure mode is a missed warning, never a false one.
+
+**The record is full of personal data.** `email`, `identification` (DNI number),
+`address` and `phone` all come back. `collector::load()` used to cache the response
+whole. It now reduces to five fields before caching, and the raw array goes out of
+scope immediately.
+
+Also confirmed here, matching `API-FINDINGS.md` §8: `email` is present on
+`/users/me` and follows `test_user_<nickname digits>@testuser.com` —
+`TESTUSER457645270959939118` → `test_user_457645270959939118@testuser.com`. It
+remains unobtainable for a buyer test account, which has no application of its own.
+
+**The real-seller case is now measured, closing the item this file previously
+listed as unconfirmed.** `GET /users/me` against Julio's own production credentials
+(2026-08-31) returned neither `test_data` nor a `test_user` tag — the key list for
+a real account is shorter, missing that object entirely, and `tags` holds only
+`normal`, `messages_as_seller`, `user_product_seller`. The nickname (`JTENTOR`)
+also does not start with `TESTUSER`. All three signals in `is_test_account()`
+agree on `false`, so the fallback chain needs no further change. The real account
+also carries two fields the test account did not: `secure_email` and `thumbnail`,
+neither of which this plugin has a use for; `reduce()` already discards anything
+outside its five kept fields, so no change was needed there either.
+
+## Moodle 5.2 signatures, verified against source
+
+    enrol_page_hook(stdClass $instance)          // #[\Override]; builds output with
+                                                 // core_enrol\output\enrol_page and
+                                                 // core\output\single_button, named args
+    can_self_enrol($instance, $checkuserenrolment = true)  // returns true|string|false
+    is_self_enrol_available($instance)                     // same convention
+    use_standard_editing_ui()
+    can_add_instance($courseid)
+    edit_instance_form($instance, MoodleQuickForm $mform, $context)
+    edit_instance_validation($data, $files, $instance, $context)
+    validate_param_types($data, $rules)
+    enrol_user($instance, $userid, $roleid = null, $timestart = 0, $timeend = 0,
+               $status = null, $recovergrades = null)
+    update_user_enrol($instance, $userid, $status = null, $timestart = null,
+                      $timeend = null)
+    process_expirations(progress_trace $trace, $courseid = null)
+    send_expiry_notifications($trace)
+    send_course_welcome_message_to_user(stdClass $instance, int $userid,
+        int $sendoption, ?string $message = '', ?int $roleid = null): void
+
+`process_expirations()` and `send_expiry_notifications()` both already contain
+working logic in the base `enrol_plugin` class — confirmed against current
+MoodleDev docs, see the correction note near the top of this file. What each
+needs from the plugin is a setting to read (`expiredaction`, `expirynotifyhour`)
+and, critically, a scheduled task that actually calls it — `db/tasks.php` now
+does the latter.
+
+Welcome message placeholders substituted by core, confirmed in `enrollib.php`:
+`coursename`, `courselink`, `coursestartdate`, `profileurl`, `fullname`, `email`,
+`firstname`, `lastname`, `courserole`. Julio's production template uses six of
+these and works. `$a` is built by core and knows nothing about subscriptions, so
+recurring details go in a separate plugin message rather than into the welcome.
+
+Core welcome strings live in `core_enrol`: `customwelcomemessage`,
+`customwelcomemessageplaceholder`, `customwelcomemessage_help`. The textarea needs
+a dummy static group to be hideable — MDL-66251.
+
+## Carried over from enrol_mercadopagocpro
+
+The naming constraint that governs this component: the core `enrol.enrol` column is
+`char(20)` and Moodle opens its database sessions in strict mode, so a longer name
+fails the insert. `mercadopagosub` is 14. The plugin name must also contain no
+underscore, because `enrol_plugin::get_name()` takes `explode('_', get_class($this))[1]`.
+
+Two operational rules from that plugin's test cycle apply here unchanged. Server
+environment variables outrank site settings in `credentials::resolve()`, so a test
+harness has to clear them or it inherits production credentials. And `phpcs`/`phpcbf`
+must be run with an explicit `--standard`, from inside the plugin directory, with a
+`.phpcs.xml` that excludes any vendored tree.
+
+## Next iteration
+
+**`can_subscribe()` and `enrol_page_hook()` are written.** `can_subscribe()` is
+this plugin's own method, not a core override — `enrol_plugin` has no such
+method — shaped after the `can_self_enrol()`/`is_self_enrol_available()`
+convention: `true`, a string the learner reads, or `false` to show nothing. It
+checks, in order: instance enabled, logged in and not a guest, the
+`enrol/mercadopagosub:subscribe` capability, credentials and HTTPS still intact
+(defence in depth — `edit_instance_validation()` already checked both at
+save time), no existing non-`ended` row for this user on this instance, and
+`customint5` (max subscribers) against a count of `trialing`/`active`/`overdue`
+rows. It is the single authority: the eventual subscriber form must call it too,
+rather than re-deriving the same checks, or the two will eventually disagree.
+
+**A signature gap surfaced and was not resolved by guessing.** This file
+previously recorded `enrol_page_hook()` as verified to build output with
+`core_enrol\output\enrol_page` and `core\output\single_button`. This session
+could not re-confirm the constructor of `core_enrol\output\enrol_page` against
+actual Moodle 5.2 source — web search surfaced no source for it. Rather than
+invent a plausible-looking call, `enrol_page_hook()` as written uses only
+`$OUTPUT->box()` and `single_button`, both long-stable core output APIs. **To
+confirm on a real site:** whether `core_enrol\output\enrol_page` exists in 5.2
+and should replace this — check `public/enrol/self/lib.php`'s own
+`enrol_page_hook()` on the actual installed source, which is a better source
+than anything found this session.
+
+1. ~~`settings.php`~~ — done.
+2. ~~`db/messages.php` and `db/tasks.php`~~ — done, see above. Both scheduled
+   tasks are thin wrappers around already-working `enrol_plugin` methods; no
+   `lib.php` override was needed after all — see the correction note above.
+3. ~~`enrol_page_hook()` and `can_subscribe()`~~ — done, see above. The
+   country-restriction and third-party-payer explanation strings mentioned here
+   originally belong to the subscriber form (item 4), not this page hook —
+   `can_subscribe()` doesn't know the payer's country yet, only the subscriber
+   form, where an email address is entered, can check that.
+4. ~~The subscriber form~~ — done, see above.
+5. ~~`subscription_service`~~ — done, see above.
+6. ~~`paymentlink.php`~~ — done, see above.
+7. ~~`webhook.php`~~ — done, see above. It only receives and queues.
+8. ~~The processing task~~ — done for `subscription_preapproval`, see above.
+   Enrolment and group sync are new and load-bearing; review the two judgement
+   calls flagged above (`signaturestatus` not gating action, `ended` not
+   shortening `timeend`) before treating either as settled.
+9. ~~The Mercado Pago reconciliation task~~ — done, see above. Every table and
+   transition the schema anticipated now has code behind it. The three
+   flagged judgement calls (trial detection, `signaturestatus` not gating
+   action, `ended` not shortening `timeend`) are unchanged and worth Julio's
+   explicit review before anything here is called settled.
+10. **The privacy provider — the real remaining functional gap, and also item 1
+    of the "Marketplace readiness checklist" above.** `enrol_mercadopagosub_sub`
+    holds `payeremail`, a personal data field with no other record of it
+    anywhere (Mercado Pago itself returns it as a permanently empty string).
+    `enrol_mercadopagosub_payment` and `enrol_mercadopagosub_event` both carry
+    a redacted API payload. All three need `\core_privacy\local\metadata`
+    declarations and export/delete implementations before this plugin can be
+    considered for the plugins directory — the contribution checklist requires it
+    even though testing does not.
+11. After the privacy provider: `cli/diagnose.php`, then the PHPUnit suite,
+    then phpcs, then Behat, then the README/docs/CHANGES.md, in that order —
+    see "Marketplace readiness checklist" above for why this order (each
+    later item is either larger in scope or depends on the plugin actually
+    running correctly first).
+
+## To confirm on a real site, at first install
+
+Three assertions in the tree are marked and unverified. None blocks writing code;
+all three have to be settled before anything is called a release.
+
+- **`$plugin->requires = 2026042002`** in `version.php` is the value supplied for
+  5.2.2 and was never checked against `public/version.php` on `MOODLE_502_STABLE`.
+- **`PUT` in `curl_transport`** is issued as a `POST` with `CURLOPT_CUSTOMREQUEST`,
+  because core's `curl::put()` is shaped for file uploads and its handling of a raw
+  JSON body is not confirmed for this release. The probe performed these `PUT`s with
+  plain curl and they behaved as expected; the wrapper path has not been exercised.
+- ~~**The account endpoint on a real seller account**~~ — measured 2026-08-31,
+  see above. Closed.
+
+## Still unmeasured
+
+- **What the subscription webhooks carry — measured 2026-08-31, closed.**
+  Every `subscription_preapproval` notification has this shape:
+
+      {
+        "action": "created" | "updated",
+        "application_id": <int>,
+        "data": {"id": "<preapproval_id>"},
+        "date": "...",
+        "entity": "preapproval",
+        "id": <event id>,
+        "type": "subscription_preapproval",
+        "version": <int>
+      }
+
+  A second, distinct notification type exists and was not anticipated at design
+  time: `type: subscription_authorized_payment`, `entity: authorized_payment`,
+  same envelope shape, firing alongside a plain `type: payment` notification for
+  every completed recurring charge. Both carry an id in a space this plugin does
+  not otherwise use — neither is the preapproval id.
+
+  **`external_reference` is absent from every webhook body**, of all three types.
+  It does exist, but only inside the record returned by
+  `GET /authorized_payments/search?preapproval_id={id}`, alongside `preapproval_id`
+  itself, a nested `payment` object (`id`, `status`, `status_detail` — the same id
+  the plain `payment` webhook carries), and two previously undocumented fields:
+  `retry_attempt` and `next_retry_date`, meaning the platform runs its own retry
+  cycle on a failed recurring charge independently of whatever this plugin's
+  `expiredaction`/notice mechanism does. Worth a line in `docs/INSTALL.md`; does
+  not change the frozen design.
+
+  **This settles `webhook.php`'s handling, definitively:**
+
+  - `subscription_preapproval` is the only notification type whose `data.id` is
+    directly usable: it *is* the `preapproval_id` this plugin already stores.
+    Handling it is a `GET /preapproval/{id}`, read `external_reference`, locate
+    the local row, sync `status` and `next_payment_date`. No search needed.
+  - `payment` and `subscription_authorized_payment` carry no field this plugin
+    can search on without already knowing the preapproval id they belong to.
+    Treat both as reconciliation triggers, not as carriers of identity: on
+    receipt, do not attempt to resolve which subscription they belong to from
+    the body. Let the scheduled reconciliation task sweep
+    `authorized_payments/search?preapproval_id=X` for each locally known active
+    subscription on its own cycle, mirroring `reconcile_payments` in
+    `enrol_mercadopagocpro`. No design alternative was found that extracts
+    identity from either notification more directly, and none is needed.
+
+  `x-signature` arrives as `ts=<epoch>,v1=<hex>` on all three notification types,
+  consistent with the published Checkout Pro shape. The exact manifest string
+  (`id:...;request-id:...;ts:...;`) is what the reference documents; verify it
+  against current docs before writing the verifier, not from memory.
+
+  `version` is not a reliable ordering signal: gaps were observed (`0` then `2`,
+  never `1`) with no corresponding loss of information — a `GET` is always the
+  source of truth regardless of which versions were or weren't delivered.
+
+  Also confirmed: `payer_id` is assigned once checkout starts, before
+  authorisation completes — it was present while `status` was still `pending`.
+  Do not treat a populated `payer_id` as evidence of authorisation.
+
+  A `subscription_preapproval` "updated" notification was observed firing
+  multiple times (`version 2`, then `version 3` roughly forty seconds later) for
+  the same authorisation event, alongside the `subscription_authorized_payment`
+  pair. An idempotent handler is not optional.
+
+- **Resuming a paused subscription after `next_payment_date` has passed.** Out of
+  scope by design, but worth knowing. Compressible with a 1-day frequency.
+
+## Notes owed to `docs/INSTALL.md`
+
+- **Running alongside `enrol_mercadopagocpro`**: each plugin needs its own
+  Mercado Pago application in *Your integrations*, registered with its own
+  Notification URL. See "Coexistence with enrol_mercadopagocpro" above for the
+  full reasoning; this is the one step that is actual configuration, not code.
+- The notification URL must be registered by hand in *Your integrations*. There is
+  one per application, so a site running more than one Mercado Pago plugin needs
+  one application per plugin. `notification_url` on the subscription is accepted
+  and silently discarded.
+- The multilang filter must be enabled, or the supplied welcome template renders
+  both languages one after the other.
+- Currency and country both follow from the collecting account: it decides what a
+  course can charge and which country a subscriber's own account must belong to.
+- A dedicated administrative role should hold the financial capabilities, and the
+  teacher role should not.
+- The guest payment path cannot be exercised in a test environment at all. Anyone
+  building a test suite should know that before they try.
