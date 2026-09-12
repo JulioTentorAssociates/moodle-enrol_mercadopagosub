@@ -222,10 +222,10 @@ already respected when this component was named, before this session.
 
 **Not yet done, and larger than one session each:**
 
-- **PHPUnit suite** — started 2026-09-12: 89 tests, 235 assertions, green.
-  See "The PHPUnit suite" below for what it covers and what it does not.
-  Still uncovered: `subscription_service`, `api_client`, `curl_transport`,
-  `collector`, `admin_setting_credential`, and the four scheduled tasks.
+- **PHPUnit suite** — 2026-09-12: **127 tests, 345 assertions, green.** See
+  "The PHPUnit suite" below. Still uncovered: `curl_transport` (needs a real
+  HTTP exchange), `admin_setting_credential` and `form/subscribe_form` (both
+  UI, and Behat's job), and `collector`'s own fetch path — see the note there.
 - **Behat suite.** The sibling's real-browser, real-HTTPS acceptance tests are
   what actually proved the payment flow works end to end, not just each unit
   in isolation. This plugin has more state machine surface to exercise
@@ -863,9 +863,10 @@ than anything found this session.
 
 ## The PHPUnit suite — started 2026-09-12
 
-**89 tests, 235 assertions, green**, and actually executed rather than only
+**127 tests, 345 assertions, green**, and actually executed rather than only
 written: Moodle 5.2.2+ (commit `a987843`) on PHP 8.4.21 against PostgreSQL
-16.13. Six files, one per unit under test:
+16.13, and independently on the CI runner on PHP 8.3 against MariaDB 11.8.9.
+One file per unit under test:
 
 | File | What it pins down |
 | --- | --- |
@@ -876,6 +877,10 @@ written: Moodle 5.2.2+ (commit `a987843`) on PHP 8.4.21 against PostgreSQL
 | `payment_reconciler_test` | payment upsert, the overdue rule and its recovery, sweep ordering and limit |
 | `privacy_provider_test` | the subscriber/payer asymmetry in both export and deletion |
 | `plugin_test` | `can_subscribe()` in every branch, instance defaults |
+| `subscription_service_test` | the request body, free trials, reference minting, the site-mismatch error |
+| `api_client_test` | endpoint paths, idempotency keys, error-body preservation, redaction |
+| `collector_test` | currency per marketplace site, the cache and its record version |
+| `tasks_test` | that db/tasks.php names classes that exist, and that nothing runs while the plugin is disabled |
 
 Plus `tests/helper_trait.php` (site setup, instance/subscription/event
 factories) and `tests/fixtures/mock_transport.php`, a scripted `transport`
@@ -891,6 +896,19 @@ PHPUnit 12 drops it. `print_r()` is a forbidden function under moodle-cs, so
 directly. Moodle returns ids from the database as strings, so identity
 comparisons against integer ids need an explicit cast — two privacy tests
 failed on exactly that before being fixed.
+
+**A second finding, about testability rather than behaviour.**
+`collector::load()` builds its own `api_client` internally instead of
+accepting one, which makes it the only service in this plugin whose network
+path cannot be scripted from a test — `event_processor`,
+`payment_reconciler`, `subscription_service` and `api_client` all take their
+collaborator as an optional constructor argument. `collector_test` therefore
+works from a seeded cache entry and from the paths that never call the API,
+which leaves the fetch, the reduction of the account record and the
+test-account detection uncovered. Giving `load()` an optional `?api_client`
+parameter would close that, and changes nothing for existing callers — but it
+is a change to working production code for the benefit of tests, so it is
+recorded here rather than made unilaterally.
 
 **One finding worth Julio's decision, recorded rather than fixed.** The
 subscriber cap (`customint5`) counts only `trialing`/`active`/`overdue`, so a
