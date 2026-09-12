@@ -226,7 +226,9 @@ already respected when this component was named, before this session.
   "The PHPUnit suite" below. Still uncovered: `curl_transport` (needs a real
   HTTP exchange), `admin_setting_credential` and `form/subscribe_form` (both
   UI, and Behat's job), and `collector`'s own fetch path — see the note there.
-- **Behat suite.** The sibling's real-browser, real-HTTPS acceptance tests are
+- **Behat suite** — written 2026-09-12, **not yet executed**: see "The Behat
+  suite" below for what was verified without a browser and what was not. The
+  sibling's real-browser, real-HTTPS acceptance tests are
   what actually proved the payment flow works end to end, not just each unit
   in isolation. This plugin has more state machine surface to exercise
   (pending → trialing/active → overdue → ended, in both directions) than a
@@ -849,11 +851,10 @@ than anything found this session.
     deletion removes the local row but cannot stop the subscription charging at
     Mercado Pago, and anonymising the row instead is a defensible alternative
     that a site with accounting-retention obligations would likely prefer.
-11. Next: Behat, then the README, `docs/INSTALL.md`,
-    `docs/TROUBLESHOOTING.md` and `CHANGES.md`, then the screenshots the
-    plugins directory listing requires. The PHPUnit suite and
-    `cli/diagnose.php` are done; what is left is either a real browser or
-    prose.
+11. Next: run the Behat feature on the HTTPS development site and fix what it
+    finds, then the README, `docs/INSTALL.md`, `docs/TROUBLESHOOTING.md` and
+    `CHANGES.md`, then the screenshots the plugins directory listing
+    requires.
 
 ## The PHPUnit suite — started 2026-09-12
 
@@ -968,6 +969,51 @@ configuration with no API to read it back — so it prints the URL and says to
 register it. And the verdicts it gives for a named user are that user's own:
 run it twice, once as the teacher who cannot add the method and once as the
 learner who cannot subscribe, because they fail for different reasons.
+
+## The Behat suite — written 2026-09-12, NOT YET RUN
+
+`tests/behat/enrol_mercadopagosub.feature`, nine scenarios, plus the data
+generator they need. **Nothing here has been executed**: Behat needs a browser
+driving a served site, and the scenarios that matter need real HTTPS, which
+the sandbox this was written in cannot provide and `moodle-plugin-ci` cannot
+either. Treat the first run on the HTTPS development site as the real test of
+this file, and expect it to find something.
+
+**Seven scenarios do not need HTTPS** — adding the method, the four validation
+failures (amount not positive, amount not numeric, frequency below one,
+negative trial), the credentials check that fires on enabling, and a manager
+seeing the method with a subscriber present. They all keep "Allow new
+subscriptions" at No, because that is what avoids the HTTPS guard while still
+exercising the rest of the form.
+
+**Two are tagged `@enrol_mercadopagosub_https`** and will only pass on a site
+served over HTTPS with a certificate that validates, since Moodle curls
+`$CFG->behat_wwwroot` from the CLI before running: the subscribe button
+appearing for a learner, and a learner who already has a subscription being
+told so instead. Run them with both conditions in one expression —
+`--tags='@enrol_mercadopagosub&&~@enrol_mercadopagosub_https'` to skip them,
+never a bare negation, which replaces the plugin tag rather than adding to it
+and runs the whole of Moodle's own suite.
+
+**The data generator is the part that could be verified, and was.**
+`tests/generator/lib.php` creates subscriptions, payments and notifications
+directly, because none of the states worth testing — active, overdue, ended —
+can be reached through the interface without the platform charging somebody,
+and without it a feature can only ever test the empty case.
+`tests/generator_test.php` exercises it exactly as a feature would: 9 tests,
+green, including that every generated state is internally consistent (an
+`overdue` row really does have a past due date), that generated references
+parse back to their instance and user, and that a generated notification is
+one `event_processor` can actually resolve and act on. So if Behat fails on
+the first run, the generator is not where to look first.
+
+**What was checked without a browser:** every string the feature asserts on
+exists in `lang/en` — which caught one wrong assertion, "You already have a
+subscription to this course" against an actual message of "You already have a
+subscription in progress or active for this course" — and every form label
+used matches a real label from `edit_instance_form()`. What remains unchecked
+is everything only a browser can tell: whether the steps resolve, whether the
+selectors match, and whether the pages render what these scenarios assume.
 
 ## To confirm on a real site, at first install
 
