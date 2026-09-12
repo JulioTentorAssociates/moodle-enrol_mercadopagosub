@@ -25,9 +25,10 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'enrol_mercadopagosub';
-$plugin->version = 2026083100;
-// VERIFY against public/version.php on MOODLE_502_STABLE before release. This is
-// the value supplied for 5.2.2 and it has not been checked against the branch.
+$plugin->version = 2026091200;
+// Verified 2026-09-12 against public/version.php at the tip of MOODLE_502_STABLE
+// (commit a987843, "weekly release 5.2.2+"), where $version = 2026042002.04 —
+// 2026042002 is that release's branching date, which is what a plugin requires.
 $plugin->requires = 2026042002;
 $plugin->maturity = MATURITY_ALPHA;
-$plugin->release = 'v0.1.0';
+$plugin->release = 'v1.0.0';
