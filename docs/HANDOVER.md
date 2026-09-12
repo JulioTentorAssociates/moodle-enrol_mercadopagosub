@@ -68,6 +68,73 @@ processor treating the other's notifications as `ignored` (harmless, per
 `event_processor`'s own "not ours" branch) but silently losing real events for
 whichever plugin's application wasn't actually registered.
 
+## The privacy provider — written 2026-09-12
+
+`classes/privacy/provider.php`, implementing `metadata\provider`,
+`request\plugin\provider` and `request\core_userlist_provider`. Every signature
+was checked against `MOODLE_502_STABLE` source in this session
+(`public/privacy/classes/local/...`), not recalled, and `enrol_paypal`'s own
+provider was read as the working precedent for an enrolment plugin that stores
+a payer's email address alongside a subscriber's id.
+
+**Two people per subscription, and the asymmetry that follows.** `payeremail`
+frequently belongs to someone other than the subscriber — the third-party payer
+case this plugin treats as first-class. When that address matches a site
+account, both the export and the delete request have to reach it, so every
+query here joins `{user} u ON u.id = s.userid OR LOWER(u.email) =
+LOWER(s.payeremail)`. The two roles are then treated differently:
+
+- **Export.** A subscriber gets the whole record — subscription, payments, and
+  the webhook notifications carrying its preapproval id. A payer gets the
+  billing view only: their own address, amount, currency, cadence, state,
+  payments. The preapproval id, the external reference and the notification
+  trail are withheld, because the subscription's identity is the subscriber's
+  personal data, not the payer's.
+- **Delete.** A subscriber's request removes the subscription row, its payment
+  rows, and the event rows whose `resourceid` is its preapproval id. A payer's
+  request only blanks `payeremail` on a subscription that belongs to someone
+  else — deleting that row would destroy a third party's enrolment history to
+  satisfy a request that was never about them. This is `enrol_paypal`'s own
+  shape for `business`/`receiver_email`, arrived at independently here and then
+  confirmed against it.
+
+**Judgement call, flagged rather than settled: deleting a subscriber's row does
+not stop the subscription at Mercado Pago.** It keeps charging the payer.
+Nothing in a privacy deletion can prevent that — a deletion request is not a
+place to make network calls that can fail or hang — so cancelling the
+preapproval in the seller's dashboard is an operational step that has to
+accompany a deletion request for a still-active subscriber. Notifications that
+arrive afterwards are harmless: `event_processor` already marks an unknown
+external reference `ignored`. **This belongs in `docs/TROUBLESHOOTING.md` and
+in whatever the site tells its data protection officer**, and it is worth
+Julio's explicit review — the alternative design (anonymise the row instead of
+deleting it, keeping the financial record intact) is defensible too, and is
+what a site with accounting-retention obligations would probably want.
+
+**Two things deliberately not declared**, with the reasoning in the class
+docblock so nobody re-opens it by accident: group membership, because
+`groups_add_member()` is called without a component and the rows therefore
+belong to `core_group`, which already exports and deletes them; and
+`user_enrolments`/`role_assignments`, which belong to `core_enrol` and
+`core_role`. `core_message` *is* declared — `enrol_plugin`'s expiry notice is
+sent with `component = 'enrol_mercadopagosub'` (verified in
+`public/lib/enrollib.php`), so the messaging subsystem holds records attributed
+to this plugin.
+
+**Housekeeping columns are not declared either, by decision:**
+`sub.timesynced`, `payment.timecreated`/`timemodified`, and
+`event.notificationid`/`requestid`/`attempts`/`processedat`/`lasterror`. They
+describe the plugin's own bookkeeping, not the person. The omission is listed
+in a comment inside `get_metadata()` so it reads as a decision. `dunningstage`
+and `dunningsince` went the other way and *are* declared: they record that a
+particular person fell behind on a payment. Core's own compliance test only
+requires that a table with a `userid` field be covered at all and that every
+declared string identifier resolves, both verified.
+
+**Verified this session, not assumed:** all 51 `privacy:*` language strings
+exist and none is unused; every declared column exists in `db/install.xml`;
+`phpcs --standard=moodle-extra` reports 0 errors and 0 warnings for this file.
+
 ## Marketplace readiness checklist — added 2026-09-12
 
 Julio asked that everything learned bringing `enrol_mercadopagocpro` to a
@@ -106,15 +173,20 @@ already respected when this component was named, before this session.
   budget time to verify each check against Julio's actual site rather than
   trusting it once it runs without a fatal error.
 - **phpcs, `moodle-extra` standard, from inside the plugin directory with an
-  explicit `--standard`.** Not run yet against this tree at all. The sibling
-  reached 0 errors/0 warnings only after a dedicated pass; expect findings here
-  too, especially around the newer files (`payment_reconciler`,
-  `event_processor`) that grew large across several sessions without a lint
-  pass in between.
-- **Privacy provider.** Already flagged below as the next concrete task —
-  repeating here only to place it in this checklist explicitly: it is a
-  contribution-checklist requirement for the plugins directory, independent of
-  whether local testing needs it.
+  explicit `--standard`.** Run for the first time 2026-09-12, against phpcs
+  3.13.6 with `moodlehq/moodle-cs`: **50 errors and 4 warnings across 22 files,
+  49 of them auto-fixable by `phpcbf`.** The bulk is one recurring house habit
+  — a blank line after a class's opening brace, in nearly every file under
+  `classes/` — plus multi-line call formatting in `lib.php` and `paymentlink.php`.
+  The four warnings are not auto-fixable and want reading rather than fixing:
+  a "possible useless method overriding" in `lib.php:191`, two lowercase inline
+  comments, and `webhook.php:58`'s missing login check, which is correct for a
+  webhook endpoint and should be silenced with an explicit `phpcs:ignore` and a
+  reason rather than left to re-surface on every run. **`classes/privacy/
+  provider.php` is already clean** — it is the only file in the tree at 0/0.
+  Note that phpcs 4.x cannot run `moodle-cs` at all (a `T_PROPERTY` constant it
+  does not define); pin 3.13.x.
+- ~~**Privacy provider.**~~ Written 2026-09-12 — see the section above.
 - **README, `docs/INSTALL.md`, `docs/TROUBLESHOOTING.md`, `CHANGES.md`.** None
   exist yet. `docs/INSTALL.md` already has a running list of notes owed to it,
   below — that list should become the actual document, not stay a scratch pad.
@@ -131,9 +203,11 @@ vendored library — a design decision already recorded below, and one that
 sidesteps an entire category of the sibling's own maintenance burden (SDK
 version drift, composer artefacts accidentally committed).
 
-**Still open from before this session, unresolved by it:** `$plugin->requires
-= 2026042002` remains unverified against `public/version.php` on
-`MOODLE_502_STABLE` — see "To confirm on a real site" below.
+**Closed 2026-09-12:** `$plugin->requires = 2026042002` is correct. Checked
+against `public/version.php` at the tip of `MOODLE_502_STABLE` (commit
+`a987843`, "weekly release 5.2.2+"), where `$version = 2026042002.04` — the
+integer part is the branching date, which is the value a plugin requires.
+`version.php` now records this instead of the VERIFY note.
 
 ## Where this stands
 
@@ -145,9 +219,10 @@ Written and reviewed: `version.php`, `db/install.xml`, `db/access.php`,
 `api_client`, `api_exception`, `collector`, `admin_setting_credential`,
 `subscription_service`, `webhook_signature`, `event_processor`,
 `payment_reconciler`, `form/subscribe_form`, `task/send_expiry_notifications`,
-`task/process_expirations`, `task/process_events`, `task/reconcile_payments`.
+`task/process_expirations`, `task/process_events`, `task/reconcile_payments`,
+`privacy/provider`.
 
-Not written yet: the privacy provider, `cli/diagnose.php`, tests, docs.
+Not written yet: `cli/diagnose.php`, tests, docs.
 
 **`payment_reconciler` is written — every table and every state transition this
 plugin's schema anticipated now has something actually writing to it.**
@@ -715,28 +790,27 @@ than anything found this session.
    flagged judgement calls (trial detection, `signaturestatus` not gating
    action, `ended` not shortening `timeend`) are unchanged and worth Julio's
    explicit review before anything here is called settled.
-10. **The privacy provider — the real remaining functional gap, and also item 1
-    of the "Marketplace readiness checklist" above.** `enrol_mercadopagosub_sub`
-    holds `payeremail`, a personal data field with no other record of it
-    anywhere (Mercado Pago itself returns it as a permanently empty string).
-    `enrol_mercadopagosub_payment` and `enrol_mercadopagosub_event` both carry
-    a redacted API payload. All three need `\core_privacy\local\metadata`
-    declarations and export/delete implementations before this plugin can be
-    considered for the plugins directory — the contribution checklist requires it
-    even though testing does not.
-11. After the privacy provider: `cli/diagnose.php`, then the PHPUnit suite,
-    then phpcs, then Behat, then the README/docs/CHANGES.md, in that order —
-    see "Marketplace readiness checklist" above for why this order (each
-    later item is either larger in scope or depends on the plugin actually
-    running correctly first).
+10. ~~The privacy provider~~ — done 2026-09-12, see "The privacy provider"
+    above. One judgement call there is flagged and not settled: a subscriber's
+    deletion removes the local row but cannot stop the subscription charging at
+    Mercado Pago, and anonymising the row instead is a defensible alternative
+    that a site with accounting-retention obligations would likely prefer.
+11. Next: `cli/diagnose.php`, then the PHPUnit suite, then the `phpcbf` pass
+    over the 49 auto-fixable findings and a decision on the four warnings, then
+    Behat, then the README/docs/CHANGES.md — see "Marketplace readiness
+    checklist" above for why this order (each later item is either larger in
+    scope or depends on the plugin actually running correctly first). The
+    PHPUnit suite should now include `privacy/provider` among its per-class
+    files; core's own `test_table_coverage` and `test_all_providers_compliant`
+    will exercise the metadata side for free once the suite runs at all.
 
 ## To confirm on a real site, at first install
 
 Three assertions in the tree are marked and unverified. None blocks writing code;
 all three have to be settled before anything is called a release.
 
-- **`$plugin->requires = 2026042002`** in `version.php` is the value supplied for
-  5.2.2 and was never checked against `public/version.php` on `MOODLE_502_STABLE`.
+- ~~**`$plugin->requires = 2026042002`**~~ — verified 2026-09-12 against
+  `MOODLE_502_STABLE` source. Closed.
 - **`PUT` in `curl_transport`** is issued as a `POST` with `CURLOPT_CUSTOMREQUEST`,
   because core's `curl::put()` is shaped for file uploads and its handling of a raw
   JSON body is not confirmed for this release. The probe performed these `PUT`s with
@@ -814,6 +888,11 @@ all three have to be settled before anything is called a release.
   scope by design, but worth knowing. Compressible with a 1-day frequency.
 
 ## Notes owed to `docs/INSTALL.md`
+
+- **Handling a data deletion request for an active subscriber**: deleting the
+  site's record does not cancel the subscription at Mercado Pago, which keeps
+  charging the payer. The preapproval has to be cancelled in the seller's
+  dashboard as part of handling the request. See "The privacy provider" above.
 
 - **Running alongside `enrol_mercadopagocpro`**: each plugin needs its own
   Mercado Pago application in *Your integrations*, registered with its own
