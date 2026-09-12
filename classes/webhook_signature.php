@@ -43,7 +43,8 @@ namespace enrol_mercadopagosub;
  * "data_id" in $_GET.
  *
  * @package    enrol_mercadopagosub
- * @copyright  2026 Julio Tentor
+ * @copyright 2026 Julio Tentor & Associates <https://juliotentor.com>
+ * @author    Julio Tentor <jtentor@juliotentor.com>
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class webhook_signature {

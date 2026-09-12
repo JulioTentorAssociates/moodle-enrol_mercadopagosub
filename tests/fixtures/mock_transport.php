@@ -29,7 +29,8 @@ use enrol_mercadopagosub\transport;
  * the previous call left behind.
  *
  * @package    enrol_mercadopagosub
- * @copyright  2026 Julio Tentor
+ * @copyright 2026 Julio Tentor & Associates <https://juliotentor.com>
+ * @author    Julio Tentor <jtentor@juliotentor.com>
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class mock_transport implements transport {

@@ -34,7 +34,8 @@ namespace enrol_mercadopagosub;
  * without shell access, which also makes them the easiest to change by accident.
  *
  * @package    enrol_mercadopagosub
- * @copyright  2026 Julio Tentor
+ * @copyright 2026 Julio Tentor & Associates <https://juliotentor.com>
+ * @author    Julio Tentor <jtentor@juliotentor.com>
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class credentials {

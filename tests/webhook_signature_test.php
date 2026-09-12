@@ -28,7 +28,8 @@ use PHPUnit\Framework\Attributes\CoversClass;
  * so a change to the manifest breaks these rather than passing silently.
  *
  * @package    enrol_mercadopagosub
- * @copyright  2026 Julio Tentor
+ * @copyright 2026 Julio Tentor & Associates <https://juliotentor.com>
+ * @author    Julio Tentor <jtentor@juliotentor.com>
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(webhook_signature::class)]

@@ -32,7 +32,8 @@ namespace enrol_mercadopagosub\task;
  * this warning if the instance was also given a fixed enrolment end date.
  *
  * @package    enrol_mercadopagosub
- * @copyright  2026 Julio Tentor
+ * @copyright 2026 Julio Tentor & Associates <https://juliotentor.com>
+ * @author    Julio Tentor <jtentor@juliotentor.com>
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class send_expiry_notifications extends \core\task\scheduled_task {

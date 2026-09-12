@@ -34,7 +34,8 @@ require_once($CFG->dirroot . '/enrol/mercadopagosub/tests/helper_trait.php');
  * period" — conservative by design, and pinned here so it stays deliberate.
  *
  * @package    enrol_mercadopagosub
- * @copyright  2026 Julio Tentor
+ * @copyright 2026 Julio Tentor & Associates <https://juliotentor.com>
+ * @author    Julio Tentor <jtentor@juliotentor.com>
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(payment_reconciler::class)]

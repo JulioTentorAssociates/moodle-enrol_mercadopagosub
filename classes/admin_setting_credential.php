@@ -31,7 +31,8 @@ namespace enrol_mercadopagosub;
  * write is always attempted first; the cache is only forgotten once it succeeds.
  *
  * @package    enrol_mercadopagosub
- * @copyright  2026 Julio Tentor
+ * @copyright 2026 Julio Tentor & Associates <https://juliotentor.com>
+ * @author    Julio Tentor <jtentor@juliotentor.com>
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class admin_setting_credential extends \admin_setting_configpasswordunmask {

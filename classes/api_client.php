@@ -27,7 +27,8 @@ namespace enrol_mercadopagosub;
  * failure, carrying the platform's own body so the caller can branch on its code.
  *
  * @package    enrol_mercadopagosub
- * @copyright  2026 Julio Tentor
+ * @copyright 2026 Julio Tentor & Associates <https://juliotentor.com>
+ * @author    Julio Tentor <jtentor@juliotentor.com>
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class api_client {

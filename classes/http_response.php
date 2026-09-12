@@ -24,7 +24,8 @@ namespace enrol_mercadopagosub;
  * make the interface impossible for a plain HTTP implementation to satisfy.
  *
  * @package    enrol_mercadopagosub
- * @copyright  2026 Julio Tentor
+ * @copyright 2026 Julio Tentor & Associates <https://juliotentor.com>
+ * @author    Julio Tentor <jtentor@juliotentor.com>
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class http_response {

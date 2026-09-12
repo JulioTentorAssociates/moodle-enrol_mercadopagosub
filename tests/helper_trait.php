@@ -27,7 +27,8 @@ require_once($CFG->dirroot . '/enrol/mercadopagosub/tests/fixtures/mock_transpor
  * Shared setup for the enrol_mercadopagosub test suite.
  *
  * @package    enrol_mercadopagosub
- * @copyright  2026 Julio Tentor
+ * @copyright 2026 Julio Tentor & Associates <https://juliotentor.com>
+ * @author    Julio Tentor <jtentor@juliotentor.com>
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 trait helper_trait {
