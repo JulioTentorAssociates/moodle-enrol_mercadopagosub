@@ -165,6 +165,23 @@ code itself so they do not resurface:
 constant 4.x does not define, and dies with a fatal error rather than a
 finding. Pin 3.13.x anywhere this runs.
 
+**Running phpcs from inside the plugin directory is not enough, and this cost
+a red CI run to learn.** Some moodle-cs sniffs resolve the Moodle component
+from the file's path, and simply do not fire when the plugin sits on its own.
+`moodle.Files.LangFilesOrdering` is one: run from the plugin directory it
+reported nothing, and the same tree checked at
+`moodle/public/enrol/mercadopagosub` reported **36 warnings** about language
+string ordering — enough to fail `moodle-plugin-ci phpcs --max-warnings 0`,
+which is exactly how the first CI run failed. **Check the plugin where it is
+installed**, not where it is developed:
+
+    phpcs --standard=moodle /path/to/moodle/public/enrol/mercadopagosub
+
+`phpcbf` fixed all 36 mechanically; the file's content is unchanged, only the
+order of the `$string[...]` assignments, verified by comparing the two
+files' resulting arrays key by key. Worth knowing for `lang/es` when it is
+written: the sniff wants keys in order there too.
+
 **CI: `.github/workflows/ci.yml`**, the same shape as
 `enrol_mercadopagocpro`'s — deliberately, so that a difference between the two
 files means something instead of being drift. PHP 8.3/8.4 × pgsql/mariadb,
@@ -174,13 +191,15 @@ the sibling: the privacy provider's queries put `LOWER()` on both sides of an
 email comparison and use a subquery inside a delete, which is where engines
 diverge.
 
-**This workflow has never been executed.** It could not be: the runner
-installs `moodle-plugin-ci` from packagist, which was not reachable from where
-the file was written. Expect the first real run to find something — `phpdoc`
-and `validate` are the likely candidates, since neither has ever been run
-against this tree. The PHPUnit step is wired but empty: with no `tests/`
-directory, `moodle-plugin-ci phpunit` reports nothing to run and exits 0, so a
-green first run means the prechecks passed, **not** that anything was tested.
+**First run, 2026-09-12 — one step red, everything else green.** `phpcs
+--max-warnings 0` failed on the 36 language-ordering warnings described above
+(plus one stale `InlineComment.NotCapital` already fixed locally by then).
+`phplint`, `validate`, `savepoints`, `mustache`, `grunt` and `phpdoc` all
+passed, and **PHPUnit ran the full suite on the runner: 89 tests, 235
+assertions, green on PHP 8.3 + MariaDB 11.8.9**, which is the first
+independent confirmation of the suite outside the machine it was written on.
+The prediction recorded here before that run — that `phpdoc` and `validate`
+were the likely first failures — was wrong; the language file was.
 
 To switch it on: pushing the file is normally enough. If Actions is disabled
 for the repository or the organisation, enable it at Settings → Actions →
@@ -777,8 +796,10 @@ underscore, because `enrol_plugin::get_name()` takes `explode('_', get_class($th
 Two operational rules from that plugin's test cycle apply here unchanged. Server
 environment variables outrank site settings in `credentials::resolve()`, so a test
 harness has to clear them or it inherits production credentials. And `phpcs`/`phpcbf`
-must be run with an explicit `--standard`, from inside the plugin directory, with a
-`.phpcs.xml` that excludes any vendored tree.
+must be run with an explicit `--standard` and a `.phpcs.xml` that excludes any
+vendored tree. Run it against the plugin *installed inside a Moodle tree*, not
+from the plugin directory alone — see "The style pass and CI" above for the
+sniffs that stay silent otherwise.
 
 ## Next iteration
 
