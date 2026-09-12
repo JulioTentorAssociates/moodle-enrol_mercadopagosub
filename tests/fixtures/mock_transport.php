@@ -37,7 +37,7 @@ class mock_transport implements transport {
     /** @var array<string, array<int, http_response>> Queued responses, keyed by URL fragment. */
     private array $queues = [];
 
-    /** @var array<int, array{method: string, url: string, body: ?string}> Every exchange, in order. */
+    /** @var array<int, array{method: string, url: string, headers: string[], body: ?string}> Every exchange, in order. */
     public array $calls = [];
 
     /**
@@ -94,7 +94,7 @@ class mock_transport implements transport {
      * @return http_response
      */
     public function request(string $method, string $url, array $headers, ?string $body = null): http_response {
-        $this->calls[] = ['method' => $method, 'url' => $url, 'body' => $body];
+        $this->calls[] = ['method' => $method, 'url' => $url, 'headers' => $headers, 'body' => $body];
 
         foreach ($this->queues as $fragment => $responses) {
             if (!str_contains($url, $fragment)) {
