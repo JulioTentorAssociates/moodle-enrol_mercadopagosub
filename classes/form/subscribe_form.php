@@ -34,7 +34,6 @@ require_once($CFG->libdir . '/formslib.php');
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class subscribe_form extends \moodleform {
-
     /**
      * Builds the form.
      *

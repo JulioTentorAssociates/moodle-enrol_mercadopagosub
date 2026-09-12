@@ -51,7 +51,6 @@
 defined('MOODLE_INTERNAL') || die();
 
 if ($ADMIN->fulltree) {
-
     // Credentials. Ranked last behind config.php and the environment — see
     // classes/credentials.php — so a value saved here can be silently overridden
     // by either. The description strings say so; nothing here can enforce it.

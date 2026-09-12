@@ -24,7 +24,6 @@ namespace enrol_mercadopagosub;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class util {
-
     /** @var string Marker appended to a payload that had to be cut short. */
     private const TRUNCATION_MARKER = '..."(truncated)"}';
 

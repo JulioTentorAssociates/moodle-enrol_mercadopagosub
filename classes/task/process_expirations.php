@@ -31,7 +31,6 @@ namespace enrol_mercadopagosub\task;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class process_expirations extends \core\task\scheduled_task {
-
     /**
      * Task name shown in the scheduled tasks admin screen.
      *

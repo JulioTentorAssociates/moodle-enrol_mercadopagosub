@@ -28,7 +28,6 @@ namespace enrol_mercadopagosub;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class http_response {
-
     /** @var int HTTP status code. Zero when the exchange never completed. */
     public readonly int $status;
 

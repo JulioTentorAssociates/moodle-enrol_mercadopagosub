@@ -38,7 +38,6 @@ namespace enrol_mercadopagosub;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class subscription_service {
-
     /** @var \stdClass Enrolment instance this subscription pays for. */
     private \stdClass $instance;
 
@@ -123,7 +122,7 @@ class subscription_service {
         $record->timeauthorized = 0;
         $record->timeended = 0;
         $record->timesynced = time();
-        // init_point has no column of its own — API-FINDINGS.md §11 notes it
+        // The init_point value has no column of its own — API-FINDINGS.md §11 notes it
         // changes shape once authorised (loses &activation=true) and its domain
         // varies by site, so it is not reconstructable from other columns and
         // is kept verbatim here rather than in a dedicated field.

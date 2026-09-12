@@ -52,7 +52,6 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class enrol_mercadopagosub_plugin extends enrol_plugin {
-
     /**
      * Uses core's add and edit instance forms rather than inventing another one.
      *
@@ -182,17 +181,6 @@ class enrol_mercadopagosub_plugin extends enrol_plugin {
     }
 
     /**
-     * Updates an instance.
-     *
-     * @param stdClass $instance Existing instance.
-     * @param stdClass $data Submitted data.
-     * @return bool
-     */
-    public function update_instance($instance, $data) {
-        return parent::update_instance($instance, $data);
-    }
-
-    /**
      * Site defaults applied to a newly created instance.
      *
      * @return array
@@ -288,28 +276,46 @@ class enrol_mercadopagosub_plugin extends enrol_plugin {
         $roles = $this->extend_assignable_roles($context, $instance->roleid ?? $this->get_config('roleid', 0));
         $mform->addElement('select', 'roleid', get_string('assignrole', 'enrol_mercadopagosub'), $roles);
 
-        $mform->addElement('date_time_selector', 'enrolstartdate',
-            get_string('enrolstartdate', 'enrol_mercadopagosub'), ['optional' => true]);
-        $mform->addElement('date_time_selector', 'enrolenddate',
-            get_string('enrolenddate', 'enrol_mercadopagosub'), ['optional' => true]);
+        $mform->addElement(
+            'date_time_selector',
+            'enrolstartdate',
+            get_string('enrolstartdate', 'enrol_mercadopagosub'),
+            ['optional' => true]
+        );
+        $mform->addElement(
+            'date_time_selector',
+            'enrolenddate',
+            get_string('enrolenddate', 'enrol_mercadopagosub'),
+            ['optional' => true]
+        );
 
         // Course welcome message. Gated on the same capability pair core uses, so
         // that a site which takes instance configuration away from teachers can
         // still let them write the welcome text.
-        if (has_any_capability(
-            ['enrol/mercadopagosub:config', 'moodle/course:editcoursewelcomemessage'],
-            $context
-        )) {
+        if (
+            has_any_capability(
+                ['enrol/mercadopagosub:config', 'moodle/course:editcoursewelcomemessage'],
+                $context
+            )
+        ) {
             // Mirrors enrol_self, minus the key-holder sender option, which resolves
             // through enrol/self:holdkey and would silently send nothing here.
             $options = enrol_send_welcome_email_options();
             unset($options[ENROL_SEND_EMAIL_FROM_KEY_HOLDER]);
-            $mform->addElement('select', 'customint4',
-                get_string('sendcoursewelcomemessage', 'enrol_mercadopagosub'), $options);
+            $mform->addElement(
+                'select',
+                'customint4',
+                get_string('sendcoursewelcomemessage', 'enrol_mercadopagosub'),
+                $options
+            );
             $mform->addHelpButton('customint4', 'sendcoursewelcomemessage', 'enrol_mercadopagosub');
 
-            $mform->addElement('textarea', 'customtext1',
-                get_string('customwelcomemessage', 'core_enrol'), ['cols' => '60', 'rows' => '8']);
+            $mform->addElement(
+                'textarea',
+                'customtext1',
+                get_string('customwelcomemessage', 'core_enrol'),
+                ['cols' => '60', 'rows' => '8']
+            );
             $mform->setDefault('customtext1', get_string('customwelcomemessageplaceholder', 'core_enrol'));
             $mform->hideIf(
                 elementname: 'customtext1',
@@ -337,9 +343,12 @@ class enrol_mercadopagosub_plugin extends enrol_plugin {
         }
 
         if (has_capability('enrol/mercadopagosub:config', $context) && enrol_accessing_via_instance($instance)) {
-            $mform->addElement('static', 'selfwarn',
+            $mform->addElement(
+                'static',
+                'selfwarn',
                 get_string('instanceeditselfwarning', 'core_enrol'),
-                get_string('instanceeditselfwarningtext', 'core_enrol'));
+                get_string('instanceeditselfwarningtext', 'core_enrol')
+            );
         }
     }
 

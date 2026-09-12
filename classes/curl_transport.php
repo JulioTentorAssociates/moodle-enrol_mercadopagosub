@@ -33,7 +33,6 @@ require_once($CFG->libdir . '/filelib.php');
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class curl_transport implements transport {
-
     /** @var int Seconds to wait for a complete response. */
     private const TIMEOUT = 30;
 

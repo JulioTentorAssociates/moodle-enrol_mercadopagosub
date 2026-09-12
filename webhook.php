@@ -55,6 +55,11 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+// This endpoint is called by Mercado Pago, not by a browser session, and it
+// authenticates the caller by HMAC signature rather than by Moodle login —
+// see webhook_signature and the signaturestatus column. A login check here
+// would reject every real notification.
+// phpcs:ignore moodle.Files.RequireLogin.Missing
 require('../../config.php');
 
 require_once(__DIR__ . '/classes/util.php');

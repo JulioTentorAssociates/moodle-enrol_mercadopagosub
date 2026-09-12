@@ -52,7 +52,6 @@ namespace enrol_mercadopagosub;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class payment_reconciler {
-
     /** @var string The only authorized_payment status this plugin has ever measured for a completed charge. */
     private const STATUS_PROCESSED = 'processed';
 

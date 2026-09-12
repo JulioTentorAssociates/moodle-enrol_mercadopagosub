@@ -28,7 +28,6 @@ namespace enrol_mercadopagosub;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class api_exception extends \moodle_exception {
-
     /** @var int HTTP status, or 0 when the request never completed. */
     protected int $httpstatus;
 

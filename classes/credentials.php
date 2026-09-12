@@ -38,7 +38,6 @@ namespace enrol_mercadopagosub;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class credentials {
-
     /** @var string Access token used as a bearer credential. */
     private string $accesstoken;
 
@@ -229,6 +228,11 @@ class credentials {
             : substr($this->accesstoken, 0, 12) . '...';
     }
 
+    // __debugInfo is a real PHP magic method, which this sniff's own list of
+    // magic methods predates. Disabled around the method rather than on one
+    // line, because an ignore comment between a docblock and its function
+    // detaches the two and trips moodle.Commenting.MissingDocblock instead.
+    // phpcs:disable moodle.NamingConventions.ValidFunctionName.MagicLikeMethod
     /**
      * Prevents credentials from reaching a log through var_dump or print_r.
      *
@@ -242,4 +246,5 @@ class credentials {
             'webhooksecret' => $this->webhooksecret === '' ? '(not set)' : '(set)',
         ];
     }
+    // phpcs:enable moodle.NamingConventions.ValidFunctionName.MagicLikeMethod
 }

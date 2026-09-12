@@ -31,7 +31,6 @@ namespace enrol_mercadopagosub;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class api_client {
-
     /** @var string Base URL of the API. */
     private const BASE_URL = 'https://api.mercadopago.com';
 

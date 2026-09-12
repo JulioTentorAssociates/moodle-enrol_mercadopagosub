@@ -52,10 +52,12 @@ require_login($course);
 // link. Anyone else needs a capability that says so explicitly — this page
 // exposes a live, single-use checkout URL, not just status information.
 $isowner = (int)$subscription->userid === (int)$USER->id;
-if (!$isowner && !has_any_capability(
-    ['enrol/mercadopagosub:viewsubscriptions', 'enrol/mercadopagosub:manage'],
-    $context
-)) {
+if (
+    !$isowner && !has_any_capability(
+        ['enrol/mercadopagosub:viewsubscriptions', 'enrol/mercadopagosub:manage'],
+        $context
+    )
+) {
     throw new \moodle_exception('nopermissions', 'error', '', get_string('paymentlink', 'enrol_mercadopagosub'));
 }
 

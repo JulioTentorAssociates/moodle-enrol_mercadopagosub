@@ -42,7 +42,6 @@ namespace enrol_mercadopagosub;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 interface transport {
-
     /**
      * Performs one HTTP exchange.
      *

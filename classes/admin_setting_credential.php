@@ -35,7 +35,6 @@ namespace enrol_mercadopagosub;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class admin_setting_credential extends \admin_setting_configpasswordunmask {
-
     /**
      * Writes the setting, then forgets the cached account if the value actually changed.
      *

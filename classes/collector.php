@@ -49,7 +49,6 @@ namespace enrol_mercadopagosub;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class collector {
-
     /** @var string Cache identifier. */
     private const CACHE_KEY = 'collector';
 

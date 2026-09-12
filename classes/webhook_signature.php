@@ -47,7 +47,6 @@ namespace enrol_mercadopagosub;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class webhook_signature {
-
     /**
      * Verifies a signature.
      *

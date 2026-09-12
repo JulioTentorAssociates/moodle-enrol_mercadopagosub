@@ -38,7 +38,6 @@ namespace enrol_mercadopagosub;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class event_processor {
-
     /** @var api_client Client used to re-fetch authoritative state. */
     private api_client $client;
 
@@ -241,7 +240,7 @@ class event_processor {
                 break;
 
             default:
-                // 'paused', or anything else: this plugin's own code never sets
+                // A 'paused' status, or anything else: this plugin's own code never sets
                 // these (HANDOVER.md, "Mercado Pago paused is not used").
                 // Recorded via mpstatus above; not acted on further.
                 break;
