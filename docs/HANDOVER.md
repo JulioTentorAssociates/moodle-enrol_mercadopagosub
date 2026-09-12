@@ -242,7 +242,9 @@ already respected when this component was named, before this session.
 - ~~**CI**~~ — `.github/workflows/ci.yml` added 2026-09-12, see "CI" below.
   Never executed, so treat its first run as a measurement, not a formality.
 - **README, `docs/INSTALL.md`, `docs/TROUBLESHOOTING.md`, `CHANGES.md`.** None
-  exist yet. `docs/INSTALL.md` already has a running list of notes owed to it,
+  exist yet (`docs/TESTING.md` does, as of 2026-09-12 — it carries the
+  config.php a test clone needs, which was lost once already when the clone
+  carrying it was destroyed). `docs/INSTALL.md` already has a running list of notes owed to it,
   below — that list should become the actual document, not stay a scratch pad.
 - **Screenshots**, required by the plugins directory listing itself, not by
   the code. Cannot happen before there is a working UI to screenshot, which
