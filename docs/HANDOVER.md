@@ -1033,6 +1033,31 @@ success. A 200 there actually means the request *missed* `behat_wwwroot` and
 the production site answered. Corrected in section 2, with the three bodies
 tabulated. Verified against 5.2 source, not recalled.
 
+**`init.php` abandons everything if composer's self-update fails, and says
+nothing about it — 2026-09-13.** `admin/tool/phpunit/cli/init.php` calls
+`testing_update_composer_dependencies()` as its first act, which runs `php
+composer.phar self-update` and, on a non-zero exit, `exit($code)`. No table is
+touched; the environment silently stays where the previous run left it. On a
+Debian stack with the tests run as `www-data`, composer's home is `/var/www`,
+which `www-data` does not own, and the self-update dies on
+`/var/www/.config/composer/keys.dev.pub`. The *first* run escapes it because
+`composer.phar` does not exist yet, so the function downloads it and forces
+`$selfupdate = false`; every run after that fails. **Always pass
+`--disable-composer`** — it stops the self-update and the dependency upgrade,
+but not the install when `vendor/` is missing.
+
+**"initialised for different version" is about the tree, not about PHPUnit.**
+`testing_util::is_test_data_updated()` compares
+`\core\component::get_all_versions_hash()` — over every component's
+`version.php` — against `$CFG->phpunit_dataroot/phpunit/versionshash.txt` and
+the `phpunittest` config row. Dropping this plugin into the tree invalidates
+the environment exactly as a version bump would. `init.php`'s own plugin list
+is the diagnostic: `enrol_mercadopagosub` must appear between
+`enrol_mercadopagocpro` and `enrol_meta`, and its absence there is proof the
+environment predates the plugin. Both gotchas are now in `docs/TESTING.md`
+section 3, along with the `E_STRICT` deprecation PHP 8.4 raises for
+`$CFG->debug = (E_ALL | E_STRICT)`.
+
 ## To confirm on a real site, at first install
 
 Three assertions in the tree are marked and unverified. None blocks writing code;

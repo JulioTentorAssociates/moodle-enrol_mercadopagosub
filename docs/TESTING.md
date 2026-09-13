@@ -467,15 +467,38 @@ Both suites set the credentials they need themselves: PHPUnit through
 admin"*. Nothing real is ever required, and no test in either suite reaches
 the Mercado Pago API.
 
+### One thing to take *out* of config.php, on PHP 8.4
+
+If the clone prints this on every CLI command and every page:
+
+```text
+Deprecated: Constant E_STRICT is deprecated in .../config.php on line N
+```
+
+then `config.php` still carries `$CFG->debug = (E_ALL | E_STRICT);`. PHP 8.4
+deprecated the constant — it has been a no-op since PHP 8.0, folded into
+`E_ALL`. Drop it:
+
+```php
+$CFG->debug = E_ALL;
+```
+
+Cosmetic for PHPUnit, less so for Behat: a run turns on developer debugging
+and installs `behat_error_handler()`, and a notice emitted on every request
+is noise across every scenario's output and faildumps.
+
 ---
 
 ## 3. PHPUnit
 
 ```bash
-# Once, and again after any change to a db/ file or after switching PHPUNIT_DB.
-# Note the public/ prefix: Moodle 5.x keeps tool CLI scripts under public/,
-# while the core ones (upgrade.php, cron.php) live in admin/cli at the root.
-php public/admin/tool/phpunit/cli/init.php
+# Once, and again after any change to a db/ file, after adding or removing ANY
+# plugin from the tree, after any version.php bump, or after switching
+# PHPUNIT_DB. Note the public/ prefix: Moodle 5.x keeps tool CLI scripts under
+# public/, while the core ones (upgrade.php, cron.php) live in admin/cli at
+# the root. --disable-composer: see below, it is not optional on a clone whose
+# web user cannot write to its own home.
+php public/admin/tool/phpunit/cli/init.php --disable-composer
 
 # The whole plugin suite.
 vendor/bin/phpunit --testsuite enrol_mercadopagosub_testsuite
@@ -486,12 +509,70 @@ vendor/bin/phpunit --filter test_a_missed_charge_becomes_overdue
 
 # The other engine. Init it once; after that, switching is only the variable,
 # because each engine has its own dataroot as well as its own database.
-PHPUNIT_DB=pgsql php public/admin/tool/phpunit/cli/init.php
+PHPUNIT_DB=pgsql php public/admin/tool/phpunit/cli/init.php --disable-composer
 PHPUNIT_DB=pgsql vendor/bin/phpunit --testsuite enrol_mercadopagosub_testsuite
 ```
 
 Expected: **136 tests, 370 assertions, green**, on both engines. The suite
 needs no network and no credentials.
+
+### Always pass `--disable-composer`
+
+`init.php` runs `php composer.phar self-update` before it does anything else,
+and on failure it calls `exit()` — the whole initialisation is abandoned
+before a single table is touched, and the environment silently stays at
+whatever the previous run left it.
+
+It fails on a normal Debian stack the second time you run it. Run the tests as
+the web user, as you should, and composer's home is that user's home:
+
+```text
+file_put_contents(/var/www/.config/composer/keys.dev.pub):
+Failed to open stream: No such file or directory
+```
+
+`www-data`'s home is `/var/www` and it does not own it. The *first* run
+escapes this: `composer.phar` is not there yet, so `testing_update_composer_
+dependencies()` downloads it and forces `$selfupdate = false` — "do not
+self-update after installation". Every run after that tries, and dies.
+
+`--disable-composer` turns off both the self-update and the dependency
+upgrade. It does **not** disable installing dependencies when `vendor/` is
+missing, so a clone that has run `composer install` once needs nothing else.
+The `Cannot create cache directory /var/www/.cache/composer` warning from the
+first run has the same cause and is harmless — composer says so itself and
+proceeds.
+
+If you would rather keep composer working, give it a writable home instead —
+`sudo` will not pass the variable through on its own:
+
+```bash
+sudo -u www-data env COMPOSER_HOME=/var/moodledata_composer \
+     php public/admin/tool/phpunit/cli/init.php
+```
+
+### "initialised for different version" means the tree changed
+
+```text
+Moodle PHPUnit environment was initialised for different version, please use:
+ php public/admin/tool/phpunit/cli/init.php
+```
+
+This is not about PHPUnit's version. `testing_util::is_test_data_updated()`
+compares `\core\component::get_all_versions_hash()` — a hash over the
+`version.php` of *every* component in the tree — against the copy stored in
+`$CFG->phpunit_dataroot/phpunit/versionshash.txt` and against the
+`phpunittest` row in the test database. Any of the three disagreeing gives
+this message.
+
+So **dropping a plugin into the tree invalidates the environment**, exactly as
+a version bump does. The plugin list `init.php` prints is the evidence: if
+`enrol_mercadopagosub` does not appear between `enrol_mercadopagocpro` and
+`enrol_meta`, it was not in the tree when that environment was built, and no
+amount of re-running `vendor/bin/phpunit` will change that.
+
+Re-run `init.php` — with `--disable-composer`, or the exit above will make it
+look as though you did.
 
 ---
 
