@@ -132,11 +132,17 @@ Feature: Mercado Pago Subscriptions enrolment method
   # a manager can actually enable an instance. Its counterpart above proves the
   # refusal; without this, only the refusal was ever tested, and "the guard
   # always says no" would pass both.
+  #
+  # It sets the amount and nothing else on purpose. Everything the site settings
+  # configure — billing frequency above all — has to arrive pre-filled from
+  # get_instance_defaults(), and a scenario that fills those fields in by hand
+  # would never notice that they came up blank.
   @javascript @enrol_mercadopagosub_https
   Scenario: A manager can enable a method when the site and credentials allow it
     Given I log in as "manager1"
     And I am on the "Course 1" "enrolment methods" page
     When I select "Mercado Pago Subscriptions" from the "Add method" singleselect
+    And the field "Billing frequency" matches value "1"
     And I set the following fields to these values:
       | Custom instance name    | Open for business |
       | Allow new subscriptions | Yes               |
@@ -144,6 +150,7 @@ Feature: Mercado Pago Subscriptions enrolment method
     And I press "Add method"
     Then I should see "Open for business" in the "generaltable" "table"
     And I should not see "This enrolment method has no Mercado Pago credentials configured"
+    And I should not see "The billing frequency must be at least 1"
 
   # The two below are about what a *learner* sees, so the instance comes from
   # the generator rather than from driving the form again. Creating it through

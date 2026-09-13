@@ -177,17 +177,31 @@ class enrol_mercadopagosub_plugin extends enrol_plugin {
      * @return int Instance id.
      */
     public function add_instance($course, ?array $fields = null) {
-        $fields = (array)$fields + $this->defaults_for_new_instance();
+        $fields = (array)$fields + $this->get_instance_defaults();
 
         return parent::add_instance($course, $fields);
     }
 
     /**
-     * Site defaults applied to a newly created instance.
+     * Site defaults for a new instance.
+     *
+     * This is a core override, and it has to be: `enrol/editinstance.php` builds
+     * the add form from `(object)$plugin->get_instance_defaults()`, and that
+     * object is what `set_data()` puts in the fields. Keeping these defaults in a
+     * private method of our own meant they reached `add_instance()` and nothing
+     * else — so every field the site settings configure came up blank on the add
+     * form, and the first thing a customer saw after filling in the amount was
+     * *"The billing frequency must be at least 1"* about a field they were never
+     * shown a value for. Behat found that too.
+     *
+     * `status` is here for completeness and for programmatic callers;
+     * `editinstance.php` overwrites it with ENROL_INSTANCE_ENABLED immediately
+     * after this returns, deliberately — see its own comment — because the site
+     * default governs instances created automatically, not by hand.
      *
      * @return array
      */
-    private function defaults_for_new_instance(): array {
+    public function get_instance_defaults() {
         return [
             'status' => $this->get_config('status', ENROL_INSTANCE_DISABLED),
             'cost' => $this->get_config('cost', '0'),

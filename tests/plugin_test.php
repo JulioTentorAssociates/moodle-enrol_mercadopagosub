@@ -330,6 +330,58 @@ final class plugin_test extends \advanced_testcase {
     }
 
     /**
+     * The add form arrives pre-filled from the site settings.
+     *
+     * `enrol/editinstance.php` builds a new instance from
+     * `(object)$plugin->get_instance_defaults()` and hands that to `set_data()`.
+     * These defaults used to live in a private method called only by
+     * `add_instance()`, so the add form came up blank and the first thing a
+     * customer saw was a validation error about a field they had never been
+     * shown a value for. Assert the core hook, not our own method: that is the
+     * one core calls.
+     *
+     * @return void
+     */
+    public function test_the_add_form_is_prefilled_from_the_site_settings(): void {
+        global $CFG;
+
+        require_once($CFG->libdir . '/formslib.php');
+
+        $this->setup_plugin();
+        set_config('frequency', 3, 'enrol_mercadopagosub');
+        set_config('gracedays', 5, 'enrol_mercadopagosub');
+        set_config('frequencytype', 'days', 'enrol_mercadopagosub');
+
+        $course = $this->getDataGenerator()->create_course();
+        $context = \context_course::instance($course->id);
+        $plugin = enrol_get_plugin('mercadopagosub');
+        $this->setAdminUser();
+
+        $defaults = $plugin->get_instance_defaults();
+        $this->assertSame(3, (int)$defaults['customint6']);
+        $this->assertSame(5, (int)$defaults['customint7']);
+        $this->assertSame('days', $defaults['customchar1']);
+
+        // And what core does with them: the object it builds reaches set_data(),
+        // so the rendered form carries the values rather than blanks.
+        $instance = (object)$defaults;
+        $instance->id = null;
+        $instance->courseid = $course->id;
+        $instance->status = ENROL_INSTANCE_ENABLED;
+
+        $mform = new \MoodleQuickForm('enrol_mercadopagosub_defaults', 'post', '');
+        $plugin->edit_instance_form($instance, $mform, $context);
+        $mform->setDefaults((array)$instance);
+
+        $this->assertSame(3, (int)$mform->getElementValue('customint6'));
+        $this->assertSame(5, (int)$mform->getElementValue('customint7'));
+
+        // Which is to say: submitting the form untouched passes validation.
+        $errors = $plugin->edit_instance_validation((array)$instance, [], null, $context);
+        $this->assertArrayNotHasKey('customint6', $errors);
+    }
+
+    /**
      * The role selector keeps whatever role the instance already carries, even
      * one the editing user could not have chosen themselves. Otherwise opening
      * the form as a teacher and pressing save would quietly move an

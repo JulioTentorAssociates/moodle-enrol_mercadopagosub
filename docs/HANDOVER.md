@@ -1200,8 +1200,38 @@ Restructured rather than patched:
   to remember that.
 
 Ten scenarios now, three HTTPS-tagged. 140 tests, 384 assertions, green; phpcs
-clean on both standards. The next HTTPS run says whether the form scenario
-passes — and if it fails, it fails on the step that is actually wrong.
+clean on both standards.
+
+**Third run: the two learner scenarios pass, and the new form scenario found a
+second real bug.** The learner ones passing is worth stating on its own — both
+require `can_subscribe()` to return true, which needs credentials complete *and*
+HTTPS, so they prove those resolve correctly in a real web request and clear
+both status guards of suspicion.
+
+**The site settings never reached an instance created through the interface.**
+The defaults lived in a private `defaults_for_new_instance()`, called only from
+`add_instance()` — which runs *after* validation. But `enrol/editinstance.php`
+builds the add form from `(object)$plugin->get_instance_defaults()`, the core
+hook, and that object is what `set_data()` puts in the fields. Never having
+overridden it meant every field the site settings configure came up blank, and
+a customer filling in the amount and pressing Add method got *"The billing
+frequency must be at least 1"* about a field they had never been shown a value
+for. The private method was simply the core hook under the wrong name; renaming
+it to `get_instance_defaults()` fixes the form, `add_instance()` and any
+programmatic caller at once.
+
+Found because the new scenario set the amount and nothing else. The earlier
+scenarios all filled *"Billing frequency"* in by hand, which is exactly why
+none of them noticed — a test that supplies a value can never discover that no
+default arrived. The scenario now asserts the field matches "1" before touching
+anything, and `plugin_test::test_the_add_form_is_prefilled_from_the_site_settings()`
+covers it in PHPUnit: **verified it fails without the fix**, on the missing
+`customint6`.
+
+That is two fatal-to-first-use bugs Behat has found in three runs, both of them
+on the very first screen of the plugin, and both invisible to 136 unit tests
+because none of those tests ever built the form. **141 tests, 390 assertions,
+green**; phpcs clean on both standards.
 
 ## To confirm on a real site, at first install
 

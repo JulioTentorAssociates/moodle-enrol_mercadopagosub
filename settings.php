@@ -21,7 +21,7 @@
  * the UI, drive the core expiry machinery, and let an account settling in an
  * unrecognised currency be used at all. Instance-level defaults (role, billing
  * frequency, grace period, welcome message) already have working fallbacks coded
- * directly in enrol_mercadopagosub_plugin::defaults_for_new_instance() via
+ * directly in enrol_mercadopagosub_plugin::get_instance_defaults() via
  * $this->get_config($name, $default) — that call returns $default whenever no
  * admin_setting for $name has ever been registered, so those remain fixed at
  * their coded defaults until a site actually needs to change them from this
