@@ -45,6 +45,56 @@ Two version pins, both learned the hard way:
   define the `T_PROPERTY` constant moodle-cs references and exits with a fatal
   error rather than a finding.
 
+### PostgreSQL, if you want the second engine
+
+The site's own database server is whatever production uses — MariaDB here. The
+`PHPUNIT_DB=pgsql` branch in section 2 needs a *second* server, with a role and
+a database that do not exist until you make them. Nothing in Moodle creates
+them, and skipping this step produces an error that looks like something else:
+
+```text
+FATAL: password authentication failed for user "moodle"
+```
+
+That is not a missing database. PostgreSQL authenticates before it looks the
+database up, and under `scram-sha-256` or `md5` it deliberately gives the same
+message for *a role that does not exist* as for a wrong password, so nobody can
+enumerate roles. A missing database says so plainly — `FATAL: database "x" does
+not exist` — and you only ever see it once authentication has passed.
+
+```bash
+sudo -u postgres psql <<'SQL'
+CREATE ROLE moodle WITH LOGIN PASSWORD 'the same string as $CFG->dbpass';
+CREATE DATABASE moodle_test_pgsql OWNER moodle ENCODING 'UTF8' TEMPLATE template0;
+SQL
+```
+
+**`OWNER moodle` is not decoration.** Since PostgreSQL 15 the `public` schema
+belongs to `pg_database_owner` instead of being writable by everyone, so a
+database created without an owner gives the role `permission denied for schema
+public` the moment `init.php` creates its first table. Measured on PostgreSQL
+16.13, both ways.
+
+One database is enough: the test tables all carry `$CFG->phpunit_prefix`, and
+this server holds nothing else. Production stays on MariaDB and is never
+touched by any of it.
+
+Then verify the credentials the way Moodle will use them — over TCP, because
+`$CFG->dbhost = 'localhost'` with `dbsocket => 0` means a network connection,
+not the unix socket, and the socket usually authenticates by `peer` instead:
+
+```bash
+PGPASSWORD='the same string' \
+  psql -h localhost -U moodle -d moodle_test_pgsql -c 'SELECT current_user'
+```
+
+If that fails while the socket works, the problem is in `pg_hba.conf`: the
+`host` lines for `127.0.0.1/32` and `::1/128` must exist and must name a method
+the role's stored password can satisfy — a role created under
+`password_encryption = scram-sha-256` cannot authenticate against an `md5`
+line. Note which address the error reports; `localhost` resolves to `::1`
+first on a dual-stack host, so the IPv6 line is the one that matters.
+
 ---
 
 ## 1b. Installing Node.js, Chrome and chromedriver
@@ -503,9 +553,10 @@ php public/admin/tool/phpunit/cli/init.php --disable-composer
 # The whole plugin suite.
 vendor/bin/phpunit --testsuite enrol_mercadopagosub_testsuite
 
-# One file, or one test.
+# One file, or one test. Keep the --testsuite on the filter: see below.
 vendor/bin/phpunit public/enrol/mercadopagosub/tests/privacy_provider_test.php
-vendor/bin/phpunit --filter test_a_missed_charge_becomes_overdue
+vendor/bin/phpunit --testsuite enrol_mercadopagosub_testsuite \
+    --filter test_a_missed_charge_becomes_overdue
 
 # The other engine. Init it once; after that, switching is only the variable,
 # because each engine has its own dataroot as well as its own database.
@@ -515,6 +566,29 @@ PHPUNIT_DB=pgsql vendor/bin/phpunit --testsuite enrol_mercadopagosub_testsuite
 
 Expected: **136 tests, 370 assertions, green**, on both engines. The suite
 needs no network and no credentials.
+
+### A bare `--filter` reports thousands of PHPUnit deprecations
+
+```text
+OK, but there were issues!
+Tests: 1, Assertions: 5, PHPUnit Deprecations: 4036.
+```
+
+Nothing is wrong with the plugin, and the same test inside
+`--testsuite enrol_mercadopagosub_testsuite` reports none. `--filter` only
+*selects* tests; it does not narrow what gets loaded. Without a `--testsuite`,
+PHPUnit builds all 412 suites `init.php` writes into `phpunit.xml`, which means
+parsing the metadata of every test class in Moodle. Core still declares
+`@covers`, `@dataProvider` and `@group` in docblocks, and PHPUnit 11's
+`AnnotationParser` emits one deprecation per class and per method for those
+— *"Metadata in doc-comments is deprecated and will no longer be supported in
+PHPUnit 12"*. The count is core's docblocks, nothing of ours. The 400 MB peak
+and the discovery time have the same cause.
+
+These are PHPUnit deprecations, not `E_DEPRECATED` from the code under test,
+so `failOnDeprecation="true"` in `phpunit.xml` does not turn them into a
+failure. Scope the run instead — a `--testsuite`, or a file path — and they go
+away.
 
 ### Always pass `--disable-composer`
 

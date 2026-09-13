@@ -1058,6 +1058,27 @@ environment predates the plugin. Both gotchas are now in `docs/TESTING.md`
 section 3, along with the `E_STRICT` deprecation PHP 8.4 raises for
 `$CFG->debug = (E_ALL | E_STRICT)`.
 
+**PHPUnit is green on MariaDB on the real clone — 2026-09-13.** Moodle 5.2.2,
+PHP 8.4.24, MariaDB 12.3.3, PHPUnit 11.5.55: **136 tests, 370 assertions, OK**,
+in 7m02s. First execution of this suite outside the sandbox it was written in,
+and it needed no changes. PostgreSQL still pending, blocked only on creating
+the role and database.
+
+**Two more test-clone gotchas, both now in `docs/TESTING.md` section 1 and 3.**
+The PostgreSQL branch needs a role and a database nobody creates for you, and
+its failure reads as `FATAL: password authentication failed for user "moodle"`
+— which under `scram-sha-256`/`md5` is also what a *non-existent role* gives,
+deliberately, so the message is not evidence of a wrong password and never of a
+missing database (that one appears only after authentication succeeds). The
+database must be created `OWNER moodle`: since PostgreSQL 15 the `public`
+schema belongs to `pg_database_owner`, and without the owner clause the role
+gets `permission denied for schema public` on the first table. Measured both
+ways on 16.13. Separately, `vendor/bin/phpunit --filter <test>` with no
+`--testsuite` reports ~4000 PHPUnit deprecations: `--filter` selects but does
+not narrow loading, so all 412 suites in `phpunit.xml` are built and PHPUnit
+11's `AnnotationParser` fires once per core class and method that still keeps
+`@covers` in a docblock. Ours are attributes; the count is entirely core's.
+
 ## To confirm on a real site, at first install
 
 Three assertions in the tree are marked and unverified. None blocks writing code;
