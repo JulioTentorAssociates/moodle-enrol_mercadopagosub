@@ -1017,6 +1017,22 @@ used matches a real label from `edit_instance_form()`. What remains unchecked
 is everything only a browser can tell: whether the steps resolve, whether the
 selectors match, and whether the pages render what these scenarios assume.
 
+**An HTTP 500 from the Behat vhost is the healthy answer, and `docs/TESTING.md`
+said otherwise until 2026-09-13.** Once `$CFG->behat_*` is configured,
+`public/lib/setup.php` matches any web request against `$CFG->behat_wwwroot`
+(`behat_is_requested_url()`, on scheme, host, port and path) and refuses to
+serve it: `behat_error()` → `testing_error()` echoes one line and, when
+`$_SERVER['REMOTE_ADDR']` is set, sends `HTTP/1.1 500`. Before
+`admin/tool/behat/cli/init.php` has run, that line is *"Install Behat before
+enabling it"*; after it, and between runs, it is *"Behat is configured but not
+enabled on this test site"*, because `test_environment_enabled.txt` only exists
+while a run is in progress. The document told the reader to check the URL with
+`curl -o /dev/null -w '%{http_code}'` and to expect a 200 — discarding the only
+part of the response that carries the answer, and calling the wrong outcome
+success. A 200 there actually means the request *missed* `behat_wwwroot` and
+the production site answered. Corrected in section 2, with the three bodies
+tabulated. Verified against 5.2 source, not recalled.
+
 ## To confirm on a real site, at first install
 
 Three assertions in the tree are marked and unverified. None blocks writing code;

@@ -338,12 +338,34 @@ finds it.
 Then confirm the URL answers, from the clone itself:
 
 ```bash
-curl -sS -o /dev/null -w '%{http_code}\n' https://clone.example.com:8443/
+curl -sS https://clone.example.com:8443/
 ```
 
-A 200 or a redirect is fine. A certificate error here is the same error Behat
-will hit, because Moodle makes this exact request from the CLI before the
-first scenario.
+**Read the body, not the status code.** Once `$CFG->behat_*` is set, this URL
+never serves a normal page, and a bare `%{http_code}` tells you nothing useful.
+
+`setup.php` recognises the request as one aimed at the test site — it compares
+scheme, host, port and path against `$CFG->behat_wwwroot` — and stops it,
+because a browser that is not Behat has no business on a site whose database
+gets dropped between runs. It stops it by printing one line and sending **HTTP
+500**. A 500 here is therefore the expected answer, and the line says where in
+the setup you are:
+
+| The body says | What it means |
+| --- | --- |
+| `Install Behat before enabling it, use: php .../init.php` | The vhost, the port, the certificate and `behat_wwwroot` are all correct, and `init.php` has not been run yet. **This is the right answer at this point in the guide** — section 4 runs `init.php`. |
+| `Behat is configured but not enabled on this test site.` | `init.php` has been run. This is the steady state between runs: the environment is only enabled while a run is in progress. Nothing to fix. |
+| `Behat config error: ... directory is not empty ...` | `$CFG->behat_dataroot` has something else in it. See the directory rules below. |
+
+A normal Moodle page — a 200, or a redirect to the login form — is the one
+outcome that is actually *wrong*: it means the request did not match
+`$CFG->behat_wwwroot`, so the production site was served over this vhost
+instead. Compare the two URLs character for character, including the port and
+any subdirectory.
+
+A certificate error, which curl reports before any status code, is the same
+error Behat will hit, because Moodle makes this exact request from the CLI
+before the first scenario.
 
 **If that command hangs rather than answering or failing**, work through these
 in order — they separate the three things that produce the same silence:
@@ -359,10 +381,10 @@ getent hosts clone.example.com
 hostname -I
 
 # 3. Force the request to the loopback address, bypassing DNS entirely. If
-#    THIS works, the vhost and the certificate are both fine and the problem
-#    is only how the name resolves.
-curl -sS -o /dev/null -w '%{http_code}\n' \
-     --resolve clone.example.com:8443:127.0.0.1 \
+#    THIS answers at all — including with the 500 described above — the vhost
+#    and the certificate are both fine and the problem is only how the name
+#    resolves.
+curl -sS --resolve clone.example.com:8443:127.0.0.1 \
      https://clone.example.com:8443/
 ```
 
@@ -495,6 +517,10 @@ vendor/bin/behat --config /var/moodledata_behat/behatrun/behat/behat.yml \
 
 `init.php` prints the exact `--config` path for this clone; use that rather
 than the one above if they differ.
+
+`init.php` is also what turns the 500 described in section 2 from *"Install
+Behat before enabling it"* into *"Behat is configured but not enabled on this
+test site"*. Both are healthy; the second is the steady state from here on.
 
 ### The tag gotcha, measured on the sibling plugin 2026-09-04
 
