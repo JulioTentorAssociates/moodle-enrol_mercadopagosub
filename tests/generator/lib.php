@@ -52,6 +52,56 @@ class enrol_mercadopagosub_generator extends component_generator_base {
     }
 
     /**
+     * Adds a subscription enrolment method to a course.
+     *
+     * A feature needs this before it can create subscriptions, because a
+     * subscription points at an enrol instance and the only other way to get one
+     * is to fill in the instance form — which is itself the thing under test in
+     * half of these scenarios, and far too slow to repeat as a precondition in
+     * the other half.
+     *
+     * Defaults deliberately leave "Allow new subscriptions" off
+     * (ENROL_INSTANCE_DISABLED): enabling an instance runs the credentials and
+     * HTTPS checks, which a scenario about something else should not have to
+     * satisfy. Pass 'status' => 0 where that is the point.
+     *
+     * @param array|stdClass $record Must carry courseid; may override any instance field.
+     * @return stdClass The enrol row, with its id.
+     */
+    public function create_instance($record): stdClass {
+        global $DB;
+
+        $record = (array)$record;
+
+        if (empty($record['courseid'])) {
+            throw new coding_exception('An enrolment method needs a courseid.');
+        }
+
+        $course = $DB->get_record('course', ['id' => $record['courseid']], '*', MUST_EXIST);
+        unset($record['courseid']);
+
+        $fields = $record + [
+            'status' => ENROL_INSTANCE_DISABLED,
+            'cost' => 1000,
+            'currency' => 'ARS',
+            'roleid' => $DB->get_field('role', 'id', ['shortname' => 'student'], MUST_EXIST),
+            'customint1' => 0,
+            'customint2' => 0,
+            'customint3' => 0,
+            'customint4' => ENROL_DO_NOT_SEND_EMAIL,
+            'customint5' => 0,
+            'customint6' => 1,
+            'customint7' => 0,
+            'customchar1' => 'months',
+            'customchar2' => 'days',
+        ];
+
+        $instanceid = enrol_get_plugin('mercadopagosub')->add_instance($course, $fields);
+
+        return $DB->get_record('enrol', ['id' => $instanceid], '*', MUST_EXIST);
+    }
+
+    /**
      * Creates a subscription row.
      *
      * The enrolment itself is not granted here: whether a subscriber is

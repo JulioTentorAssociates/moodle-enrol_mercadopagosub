@@ -64,6 +64,41 @@ final class generator_test extends \advanced_testcase {
     }
 
     /**
+     * The generator can add the enrolment method itself, which is what a feature
+     * needs before it can create any subscription at all. Without it the only
+     * way to get an instance is the instance form, which is the thing under test
+     * in half these scenarios and far too slow to repeat in the other half.
+     *
+     * @return void
+     */
+    public function test_the_generator_can_add_the_enrolment_method(): void {
+        global $DB;
+
+        $this->setup_plugin();
+        $course = $this->getDataGenerator()->create_course();
+
+        $instance = $this->generator()->create_instance(['courseid' => $course->id]);
+
+        $this->assertSame('mercadopagosub', $instance->enrol);
+        $this->assertSame((int)$course->id, (int)$instance->courseid);
+
+        // Disabled by default: enabling runs the credentials and HTTPS checks,
+        // which a scenario about something else should not have to satisfy.
+        $this->assertSame(ENROL_INSTANCE_DISABLED, (int)$instance->status);
+
+        // And a subscription can now be hung off it, which is the point.
+        $sub = $this->generator()->create_subscription([
+            'courseid' => $course->id,
+            'userid' => $this->getDataGenerator()->create_user()->id,
+        ]);
+        $this->assertSame((int)$instance->id, (int)$DB->get_field(
+            'enrol_mercadopagosub_sub',
+            'enrolid',
+            ['id' => $sub->id]
+        ));
+    }
+
+    /**
      * A subscription can be created from a course rather than an instance id,
      * which is what a feature file has to hand.
      *

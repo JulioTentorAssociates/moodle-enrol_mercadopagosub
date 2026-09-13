@@ -293,4 +293,68 @@ final class plugin_test extends \advanced_testcase {
         $this->assertTrue($plugin->can_hide_show_instance($instance));
         $this->assertTrue($plugin->can_delete_instance($instance));
     }
+
+    /**
+     * The instance form builds.
+     *
+     * This exists because it did not. `edit_instance_form()` called
+     * `$this->extend_assignable_roles()`, which `enrol_plugin` does not define —
+     * every plugin offering a role selector declares its own — so adding a
+     * subscription method to a course died on a fatal error, on the very first
+     * screen a customer would ever reach. Nothing in this suite noticed, because
+     * nothing in it built the form; Behat found it on its first run.
+     *
+     * Calling every element into existence is the whole point: an undefined
+     * method, a missing string, a bad element type all surface here rather than
+     * in front of somebody adding the method for the first time.
+     *
+     * @return void
+     */
+    public function test_the_instance_form_builds(): void {
+        global $CFG;
+
+        require_once($CFG->libdir . '/formslib.php');
+
+        $this->setup_plugin();
+        [, $instance] = $this->create_instance();
+        $context = \context_course::instance($instance->courseid);
+
+        $this->setAdminUser();
+
+        $mform = new \MoodleQuickForm('enrol_mercadopagosub_test', 'post', '');
+        enrol_get_plugin('mercadopagosub')->edit_instance_form($instance, $mform, $context);
+
+        foreach (['status', 'cost', 'currency', 'roleid', 'customint6', 'customchar1'] as $element) {
+            $this->assertTrue($mform->elementExists($element), "The form has no '$element' element.");
+        }
+    }
+
+    /**
+     * The role selector keeps whatever role the instance already carries, even
+     * one the editing user could not have chosen themselves. Otherwise opening
+     * the form as a teacher and pressing save would quietly move an
+     * administrator's choice to something else.
+     *
+     * @return void
+     */
+    public function test_the_role_selector_keeps_a_role_the_user_cannot_assign(): void {
+        global $DB;
+
+        $this->setup_plugin();
+        [, $instance] = $this->create_instance();
+        $context = \context_course::instance($instance->courseid);
+        $managerid = $DB->get_field('role', 'id', ['shortname' => 'manager'], MUST_EXIST);
+
+        $teacher = $this->getDataGenerator()->create_and_enrol(
+            $DB->get_record('course', ['id' => $instance->courseid], '*', MUST_EXIST),
+            'editingteacher'
+        );
+        $this->setUser($teacher);
+
+        $roles = (new \ReflectionMethod(\enrol_mercadopagosub_plugin::class, 'extend_assignable_roles'))
+            ->invoke(enrol_get_plugin('mercadopagosub'), $context, $managerid);
+
+        $this->assertArrayHasKey($managerid, $roles);
+        $this->assertNotEmpty($roles[$managerid]);
+    }
 }

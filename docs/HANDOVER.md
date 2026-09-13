@@ -1125,6 +1125,48 @@ template that no longer says to set `User=` to the Moodle tree's owner —
 chromedriver never touches that tree, and on this stack that advice points
 straight at `www-data`, which is precisely the user that cannot run Chrome.
 
+## Behat's first run found a fatal bug — 2026-09-13
+
+**`edit_instance_form()` called `$this->extend_assignable_roles()`, which did
+not exist.** Adding a subscription enrolment method to a course died on
+`Call to undefined method enrol_mercadopagosub_plugin::extend_assignable_roles()`
+at `lib.php:278` — the first screen a customer would ever reach, fatal, every
+time. `enrol_plugin` has no such method: `enrol_self` declares its own, and any
+plugin whose instance form offers a role selector has to do the same. Copied
+the call from the sibling, never copied the method.
+
+**136 PHPUnit tests did not notice, because not one of them built the form.**
+That is the gap, and it is the whole argument for Behat on a plugin like this:
+the suite tested every decision `can_subscribe()` makes and never once rendered
+the screen those decisions are configured on. Six of the seven scenarios failed
+on this single line.
+
+Fixed, plus the regression tests that would have caught it:
+
+- `extend_assignable_roles()` added, shaped like `enrol_self`'s — it keeps a
+  role the instance already carries even when the editing user could not assign
+  it, so opening the form as a teacher and saving does not quietly move an
+  administrator's choice.
+- `plugin_test::test_the_instance_form_builds()` constructs a real
+  `MoodleQuickForm` and calls `edit_instance_form()` on it. **Verified it fails
+  without the fix**, with the identical error Behat reported. Any future
+  undefined method, missing string or bad element type now surfaces in PHPUnit.
+- `plugin_test::test_the_role_selector_keeps_a_role_the_user_cannot_assign()`
+  covers the branch the form itself cannot show.
+
+**The seventh failure was the feature's fault, not the plugin's.** *"A manager
+sees how many people are subscribed"* called the subscription generator on a
+course with no enrolment method, and the generator refuses that by design
+rather than inserting a row pointing at nothing. The generator now also creates
+instances — `the following "enrol_mercadopagosub > instances" exist` — because
+the only other way for a feature to get one is the instance form, which is the
+thing under test in half these scenarios. Instances default to
+`ENROL_INSTANCE_DISABLED`, since enabling runs the credentials and HTTPS checks
+that a scenario about something else should not have to satisfy.
+
+Suite after the fix: **139 tests, 382 assertions, green**, phpcs clean on both
+`moodle` and `moodle-extra` from inside a Moodle tree. Behat not yet re-run.
+
 ## To confirm on a real site, at first install
 
 Three assertions in the tree are marked and unverified. None blocks writing code;

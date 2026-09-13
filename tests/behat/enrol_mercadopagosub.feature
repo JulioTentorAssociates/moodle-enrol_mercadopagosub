@@ -101,7 +101,10 @@ Feature: Mercado Pago Subscriptions enrolment method
 
   @javascript
   Scenario: A manager sees how many people are subscribed
-    Given the following "enrol_mercadopagosub > subscriptions" exist:
+    Given the following "enrol_mercadopagosub > instances" exist:
+      | course |
+      | C1     |
+    And the following "enrol_mercadopagosub > subscriptions" exist:
       | course | user     | state  |
       | C1     | student1 | active |
     And I log in as "manager1"

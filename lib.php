@@ -436,7 +436,37 @@ class enrol_mercadopagosub_plugin extends enrol_plugin {
     }
 
     /**
-     * Groups available on the instance form.
+     * Roles this user may pick as the one a paid subscription grants.
+     *
+     * enrol_plugin does not define this — enrol_self declares its own, and every
+     * plugin whose instance form offers a role selector has to do the same. The
+     * call in edit_instance_form() without this method is what made adding an
+     * instance fatal, and only Behat could find it: no unit test builds the form.
+     *
+     * @param context $context Course context.
+     * @param int $defaultrole Role the instance currently carries, or the site default.
+     * @return array Role id to localised name.
+     */
+    protected function extend_assignable_roles($context, $defaultrole): array {
+        global $DB;
+
+        $roles = get_assignable_roles($context, ROLENAME_BOTH);
+
+        // The instance's current role may be one this user cannot assign — an
+        // administrator picked it, and a teacher editing the instance later must
+        // still see what it is set to rather than have the form silently move it
+        // to something they can assign.
+        if ($defaultrole && !isset($roles[$defaultrole])) {
+            if ($role = $DB->get_record('role', ['id' => $defaultrole])) {
+                $roles[$defaultrole] = role_get_name($role, $context, ROLENAME_BOTH);
+            }
+        }
+
+        return $roles;
+    }
+
+    /**
+     * Group options for the paid and trial group selectors.
      *
      * @param context $context Course context.
      * @return array Group id to name, with 0 for none.

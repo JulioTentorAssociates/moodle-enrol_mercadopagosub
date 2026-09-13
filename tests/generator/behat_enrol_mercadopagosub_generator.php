@@ -19,9 +19,16 @@
  *
  * Lets a feature write, for example:
  *
- *   Given the following "enrol_mercadopagosub > subscriptions" exist:
+ *   Given the following "enrol_mercadopagosub > instances" exist:
+ *     | course |
+ *     | C1     |
+ *   And the following "enrol_mercadopagosub > subscriptions" exist:
  *     | course | user     | state   |
  *     | C1     | student1 | active  |
+ *
+ * The instance comes first: a subscription points at one, and the generator
+ * refuses a course that has no subscription method rather than inserting a row
+ * that points at nothing.
  *
  * @package   enrol_mercadopagosub
  * @category  test
@@ -37,6 +44,12 @@ class behat_enrol_mercadopagosub_generator extends behat_generator_base {
      */
     protected function get_creatable_entities(): array {
         return [
+            'instances' => [
+                'singular' => 'instance',
+                'datagenerator' => 'instance',
+                'required' => ['course'],
+                'switchids' => ['course' => 'courseid', 'role' => 'roleid'],
+            ],
             'subscriptions' => [
                 'singular' => 'subscription',
                 'datagenerator' => 'subscription',
