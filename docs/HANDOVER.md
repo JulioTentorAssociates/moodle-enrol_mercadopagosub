@@ -1165,7 +1165,43 @@ thing under test in half these scenarios. Instances default to
 that a scenario about something else should not have to satisfy.
 
 Suite after the fix: **139 tests, 382 assertions, green**, phpcs clean on both
-`moodle` and `moodle-extra` from inside a Moodle tree. Behat not yet re-run.
+`moodle` and `moodle-extra` from inside a Moodle tree.
+
+**Second run: the seven non-HTTPS scenarios all pass** — 98 steps, 2m38s. The
+two HTTPS-tagged ones still fail, and the interesting part is that they fail
+*ambiguously*, which was a fault in how they were written.
+
+Both drove the instance form on their way to testing something else — a
+learner seeing the subscribe button, and a learner with a pending subscription
+being told so — and both failed after the form step rather than on it, one on
+`I should see "Subscribe"` and one on the generator reporting that the course
+had no enrolment method at all. Behat's `I press` asserts nothing about the
+outcome, so a form that redisplays with an error passes that step and the
+failure lands somewhere downstream. Nothing in the output said whether the
+instance had been created.
+
+**The plugin's validation is not what refuses it.** Reproduced in PHPUnit with
+the exact submitted data, `$CFG->wwwroot` https and the Background's
+credentials: `edit_instance_validation()` returns no errors at all, and
+`get_currencies()` returns `{"ARS":"Argentine Peso"}`. So the guard is not
+firing and the cause lies in the browser interaction, which is not worth
+chasing in scenarios that should never have driven the form.
+
+Restructured rather than patched:
+
+- **A new HTTPS scenario does nothing but the form** — a manager enables an
+  instance on a site and credentials that allow it, asserting the instance
+  appears in the table and no credentials error is shown. This was a real hole:
+  scenario 6 proves the guard *refuses*, and nothing proved it ever *accepts*.
+  A guard that always said no would have passed the entire file.
+- **The two learner scenarios build the instance with the generator**, which
+  now creates instances and takes `enabled`/`disabled` as words in the status
+  column, because `ENROL_INSTANCE_ENABLED` is 0 and no feature file should have
+  to remember that.
+
+Ten scenarios now, three HTTPS-tagged. 140 tests, 384 assertions, green; phpcs
+clean on both standards. The next HTTPS run says whether the form scenario
+passes — and if it fails, it fails on the step that is actually wrong.
 
 ## To confirm on a real site, at first install
 

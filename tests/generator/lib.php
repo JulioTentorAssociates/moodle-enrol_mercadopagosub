@@ -80,6 +80,14 @@ class enrol_mercadopagosub_generator extends component_generator_base {
         $course = $DB->get_record('course', ['id' => $record['courseid']], '*', MUST_EXIST);
         unset($record['courseid']);
 
+        // ENROL_INSTANCE_ENABLED is 0 and DISABLED is 1, which is exactly
+        // backwards from how anybody reads a table cell. Accept the words.
+        if (isset($record['status']) && !is_numeric($record['status'])) {
+            $record['status'] = $record['status'] === 'enabled'
+                ? ENROL_INSTANCE_ENABLED
+                : ENROL_INSTANCE_DISABLED;
+        }
+
         $fields = $record + [
             'status' => ENROL_INSTANCE_DISABLED,
             'cost' => 1000,

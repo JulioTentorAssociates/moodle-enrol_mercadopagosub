@@ -99,6 +99,29 @@ final class generator_test extends \advanced_testcase {
     }
 
     /**
+     * The words 'enabled' and 'disabled' work in the status column, because
+     * ENROL_INSTANCE_ENABLED is 0 and DISABLED is 1 and no feature file should
+     * have to remember that.
+     *
+     * @return void
+     */
+    public function test_the_instance_status_accepts_words(): void {
+        $this->setup_plugin();
+
+        $enabled = $this->generator()->create_instance([
+            'courseid' => $this->getDataGenerator()->create_course()->id,
+            'status' => 'enabled',
+        ]);
+        $disabled = $this->generator()->create_instance([
+            'courseid' => $this->getDataGenerator()->create_course()->id,
+            'status' => 'disabled',
+        ]);
+
+        $this->assertSame(ENROL_INSTANCE_ENABLED, (int)$enabled->status);
+        $this->assertSame(ENROL_INSTANCE_DISABLED, (int)$disabled->status);
+    }
+
+    /**
      * A subscription can be created from a course rather than an instance id,
      * which is what a feature file has to hand.
      *

@@ -128,19 +128,35 @@ Feature: Mercado Pago Subscriptions enrolment method
   # Passing a bare negation instead replaces the plugin tag rather than adding
   # to it, and runs the whole of Moodle's own suite. Measured on the sibling
   # plugin, 2026-09-04.
+  # This one is the form itself: on an HTTPS site with credentials configured,
+  # a manager can actually enable an instance. Its counterpart above proves the
+  # refusal; without this, only the refusal was ever tested, and "the guard
+  # always says no" would pass both.
+  @javascript @enrol_mercadopagosub_https
+  Scenario: A manager can enable a method when the site and credentials allow it
+    Given I log in as "manager1"
+    And I am on the "Course 1" "enrolment methods" page
+    When I select "Mercado Pago Subscriptions" from the "Add method" singleselect
+    And I set the following fields to these values:
+      | Custom instance name    | Open for business |
+      | Allow new subscriptions | Yes               |
+      | Recurring amount        | 15000             |
+    And I press "Add method"
+    Then I should see "Open for business" in the "generaltable" "table"
+    And I should not see "This enrolment method has no Mercado Pago credentials configured"
+
+  # The two below are about what a *learner* sees, so the instance comes from
+  # the generator rather than from driving the form again. Creating it through
+  # the interface made these scenarios depend on the form as well as on the
+  # thing they test, and a failure could not be attributed to either.
   @javascript @enrol_mercadopagosub_https
   Scenario: A student sees the subscribe button on the enrolment page
     Given the following "courses" exist:
       | fullname | shortname | category |
       | Course 2 | C2        | 0        |
-    And I log in as "admin"
-    And I am on the "Course 2" "enrolment methods" page
-    And I select "Mercado Pago Subscriptions" from the "Add method" singleselect
-    And I set the following fields to these values:
-      | Allow new subscriptions | Yes   |
-      | Recurring amount        | 15000 |
-    And I press "Add method"
-    And I log out
+    And the following "enrol_mercadopagosub > instances" exist:
+      | course | status  | cost  |
+      | C2     | enabled | 15000 |
     When I log in as "student1"
     And I am on "Course 2" course homepage
     Then I should see "Subscribe"
@@ -150,14 +166,9 @@ Feature: Mercado Pago Subscriptions enrolment method
     Given the following "courses" exist:
       | fullname | shortname | category |
       | Course 3 | C3        | 0        |
-    And I log in as "admin"
-    And I am on the "Course 3" "enrolment methods" page
-    And I select "Mercado Pago Subscriptions" from the "Add method" singleselect
-    And I set the following fields to these values:
-      | Allow new subscriptions | Yes   |
-      | Recurring amount        | 15000 |
-    And I press "Add method"
-    And I log out
+    And the following "enrol_mercadopagosub > instances" exist:
+      | course | status  | cost  |
+      | C3     | enabled | 15000 |
     And the following "enrol_mercadopagosub > subscriptions" exist:
       | course | user     | state   |
       | C3     | student1 | pending |

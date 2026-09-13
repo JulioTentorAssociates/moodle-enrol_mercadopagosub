@@ -796,20 +796,26 @@ the tool builds by default rather than adding to it. Passing a bare negation
 therefore selects Moodle's entire Behat suite — 3150+ steps, still running at
 35 minutes. Always put both conditions in one expression, as above.
 
-### Nine scenarios, two of which need HTTPS
+### Ten scenarios, three of which need HTTPS
 
 Seven run anywhere: adding the method, four validation failures, the
 credentials check that fires when the method is enabled, and a manager seeing
 the method with a subscriber present. They keep *"Allow new subscriptions"* at
 No, which is what avoids the HTTPS guard while still exercising the form.
+**Green as of 2026-09-13**: 7 scenarios, 98 steps, about 2m40s.
 
-Two carry `@enrol_mercadopagosub_https` because they enable an instance, and
-the plugin refuses to enable one on a site that is not served over HTTPS.
-On a plain-http clone they fail by proving that guard works, which is not a
-useful signal.
+Three carry `@enrol_mercadopagosub_https` because an enabled instance is
+involved, and both `edit_instance_validation()` and `can_subscribe()` refuse
+one on a site that is not served over HTTPS. On a plain-http clone they fail by
+proving that guard works, which is not a useful signal on every push.
 
-**As of 2026-09-12 this feature file has never been executed.** The first run
-is the real test of it; expect it to need corrections.
+Of those three, one drives the instance form to prove a manager really *can*
+enable a method when the site and the credentials allow it — without it only
+the refusal was ever tested, and a guard that always said no would pass the
+whole file. The other two are about what a learner sees, so they build the
+instance with the generator rather than through the form: a scenario that
+drives the form on its way to testing something else fails ambiguously, which
+is exactly what happened on the first run.
 
 ---
 
