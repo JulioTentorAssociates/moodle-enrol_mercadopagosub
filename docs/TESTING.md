@@ -209,10 +209,11 @@ if (getenv('PHPUNIT_DB') === 'pgsql') {
     $CFG->phpunit_dataroot = '/var/moodledata_phpu_pgsql';
 }
 
-// Behat. behat_wwwroot must be reachable from this machine and must be https
-// for the @enrol_mercadopagosub_https scenarios; the certificate has to
-// validate, because Moodle fetches this URL from the CLI before running.
-$CFG->behat_wwwroot   = 'https://clone.example.com';
+// Behat. behat_wwwroot must DIFFER from $CFG->wwwroot — see "The Behat URL"
+// below — must be reachable from this machine, and must be https for the
+// @enrol_mercadopagosub_https scenarios, with a certificate that validates,
+// because Moodle fetches this URL from the CLI before running.
+$CFG->behat_wwwroot   = 'https://clone.example.com:8443';
 $CFG->behat_prefix    = 'bht_';
 $CFG->behat_dataroot  = '/var/moodledata_behat';
 
@@ -244,6 +245,85 @@ $CFG->behat_profiles = [
 // without it a failure is a stack trace with no picture of the page.
 $CFG->behat_faildump_path = '/var/behat_faildumps';
 ```
+
+### The Behat URL: why it cannot be the site's own
+
+> `Behat config error: $CFG->behat_wwwroot in config.php must be different
+> from $CFG->wwwroot`
+
+This is not a formality. The Behat site is a **second site served from the
+same code**: same `dirroot`, different database (the `bht_` prefix) and
+different dataroot. Nothing is copied. Moodle decides which of the two a
+request belongs to by looking at the URL it came in on, so if both had the
+same URL there would be no way to tell them apart.
+
+**Verified** in `behat_is_requested_url()` (`public/lib/behat/lib.php`): it
+compares **host, port and path**, all three. Making any one of them differ is
+enough:
+
+| Approach | `behat_wwwroot` | What it costs |
+| --- | --- | --- |
+| **Different port** | `https://clone.example.com:8443` | A second vhost on 8443. The existing certificate still validates, because the hostname is unchanged. |
+| Different host | `https://behat.clone.example.com` | A DNS record and a certificate covering that name. |
+| Different path | `https://clone.example.com/behat` | An alias pointing at the same `public/`, and Moodle then treats it as a subdirectory install. |
+
+**The port is the least work on a clone that already has a certificate**, and
+it is what the example above uses. Apache:
+
+```apache
+Listen 8443
+
+<VirtualHost *:8443>
+    ServerName clone.example.com
+    DocumentRoot /path/to/moodle/public
+
+    SSLEngine on
+    SSLCertificateFile      /etc/letsencrypt/live/clone.example.com/fullchain.pem
+    SSLCertificateKeyFile   /etc/letsencrypt/live/clone.example.com/privkey.pem
+
+    <Directory /path/to/moodle/public>
+        Require all granted
+        AllowOverride All
+    </Directory>
+</VirtualHost>
+```
+
+nginx, the same idea:
+
+```nginx
+server {
+    listen 8443 ssl;
+    server_name clone.example.com;
+    root /path/to/moodle/public;
+
+    ssl_certificate     /etc/letsencrypt/live/clone.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/clone.example.com/privkey.pem;
+
+    location ~ [^/]\.php(/|$) {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+    }
+}
+```
+
+**Do not open 8443 in the EC2 security group.** Everything that talks to the
+Behat site — the CLI check Moodle makes before running, chromedriver, and the
+browser it drives — runs on this same machine, so localhost reaches it.
+Leaving the port closed to the internet keeps a site with a known admin
+password and freely resettable data off the public net.
+
+Then confirm the URL answers, from the clone itself:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' https://clone.example.com:8443/
+```
+
+A 200 or a redirect is fine. A certificate error here is the same error Behat
+will hit, because Moodle makes this exact request from the CLI before the
+first scenario.
 
 ### The directories: who creates them, and what must be in them
 
