@@ -29,7 +29,8 @@ yours to adjust; the setting names and the behaviour are not.
 - Composer, to install PHPUnit and Behat (`composer install` in the Moodle
   root).
 - **For Behat only**: Node.js as `.nvmrc` requires, a browser, and a
-  WebDriver for it (Chrome + chromedriver, or Selenium).
+  WebDriver for it (Chrome + chromedriver, or Selenium) — section 1b installs
+  all three.
 - **For the two HTTPS-tagged Behat scenarios**: the clone served over HTTPS
   with a certificate that validates. Moodle curls `$CFG->behat_wwwroot` from
   the CLI before running, so a self-signed certificate fails there before any
@@ -43,6 +44,132 @@ Two version pins, both learned the hard way:
 - **phpcs 3.13.x with `moodlehq/moodle-cs`, not phpcs 4.** phpcs 4 does not
   define the `T_PROPERTY` constant moodle-cs references and exits with a fatal
   error rather than a finding.
+
+---
+
+## 1b. Installing Node.js, Chrome and chromedriver
+
+Written for Debian 13 on EC2, as a non-root user with sudo. Run as an ordinary
+user, not as root: Chrome refuses to start as root unless you add
+`--no-sandbox`, and turning the sandbox off on a machine that browses anything
+is a bad habit to acquire for the sake of a test run.
+
+### Node.js
+
+Moodle pins the version it wants in `.nvmrc` at the root of the source tree —
+`lts/jod` for 5.2, which is the Node 22 line (`package.json` says
+`>=22.11.0 <23`). Use nvm so that file decides, rather than pinning a version
+by hand that drifts at the next Moodle upgrade:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+source ~/.bashrc
+
+cd /path/to/moodle        # the directory holding .nvmrc
+nvm install               # reads .nvmrc
+nvm use
+node --version            # expect v22.x
+```
+
+Node is needed for Grunt and for Moodle's own JS build, not by Behat itself.
+Behat runs without it; `moodle-plugin-ci grunt` does not.
+
+### Google Chrome
+
+```bash
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
+    | sudo gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] \
+https://dl.google.com/linux/chrome/deb/ stable main" \
+    | sudo tee /etc/apt/sources.list.d/google-chrome.list
+
+sudo apt update
+sudo apt install -y google-chrome-stable
+google-chrome --version   # note this number, the driver has to match
+```
+
+Debian's own `chromium` package works too, with `chromium-driver` alongside
+it, and apt then keeps the two in step for you. The reason to prefer Google's
+build is that the matching driver is published for every release, which
+matters when Chrome auto-updates and the pair falls out of step.
+
+### chromedriver, matching that Chrome
+
+**The major version of chromedriver must equal the major version of Chrome.**
+A mismatch fails at the first scenario with *"This version of ChromeDriver
+only supports Chrome version NN"*, which reads like a Behat problem and is
+not. Chrome for Testing publishes a driver for every Chrome release:
+
+```bash
+CHROME_VERSION=$(google-chrome --version | awk '{print $3}')
+curl -fsSL -o /tmp/chromedriver.zip \
+    "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip"
+
+sudo apt install -y unzip
+unzip -q -o /tmp/chromedriver.zip -d /tmp
+sudo install -m 0755 /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
+rm -rf /tmp/chromedriver.zip /tmp/chromedriver-linux64
+
+chromedriver --version    # major must match google-chrome --version
+```
+
+If that URL 404s, the exact build is not published; take the nearest one for
+the same major version from
+`https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json`.
+Same major is what matters, not the same patch.
+
+**After every Chrome upgrade, re-run this.** `apt upgrade` moves Chrome and
+leaves chromedriver where it was, and the next Behat run fails on a version
+message that has nothing to do with the code under test.
+
+### Running the driver
+
+By hand, in its own shell, for a one-off run:
+
+```bash
+chromedriver --port=9515
+```
+
+Or as a service, which is worth it on a clone you will come back to:
+
+```bash
+sudo tee /etc/systemd/system/chromedriver.service >/dev/null <<'UNIT'
+[Unit]
+Description=chromedriver for Moodle Behat
+After=network.target
+
+[Service]
+Type=simple
+User=admin
+ExecStart=/usr/local/bin/chromedriver --port=9515
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now chromedriver
+```
+
+Change `User=` to whoever owns the Moodle tree. Keep it bound to localhost —
+chromedriver's default is local connections only, and it deliberately has no
+authentication.
+
+### Checking all three before running Behat
+
+```bash
+node --version                                  # v22.x
+google-chrome --version                         # e.g. 141.0.7390.x
+chromedriver --version                          # same major as Chrome
+curl -s http://127.0.0.1:9515/status | head -c 80
+```
+
+That last one must answer with JSON saying *"ChromeDriver ready for new
+sessions"*. **Verified**: modern chromedriver serves this at `/`, and
+`/wd/hub/status` returns 404 — the `/wd/hub` suffix belongs to Selenium, and
+putting it in `wd_host` for chromedriver is a slow way to discover that.
 
 ---
 
@@ -83,8 +210,11 @@ $CFG->behat_wwwroot   = 'https://clone.example.com';
 $CFG->behat_prefix    = 'bht_';
 $CFG->behat_dataroot  = '/var/moodledata_behat';
 
-// One profile per browser. wd_host is chromedriver or Selenium; chromedriver
-// serves /wd/hub on 9515 by default, Selenium on 4444.
+// One profile per browser. wd_host is where the driver listens:
+//   chromedriver  -> http://127.0.0.1:9515       (no /wd/hub — verified: it 404s)
+//   Selenium      -> http://127.0.0.1:4444/wd/hub
+// --headless=new is what makes this work on a server with no display. Drop it
+// if you ever run this on a desktop and want to watch the browser.
 $CFG->behat_profiles = [
     'chrome' => [
         'browser'      => 'chrome',
@@ -92,7 +222,12 @@ $CFG->behat_profiles = [
         'capabilities' => [
             'extra_capabilities' => [
                 'chromeOptions' => [
-                    'args' => ['--no-sandbox', '--disable-dev-shm-usage', '--window-size=1920,1080'],
+                    'args' => [
+                        '--headless=new',
+                        '--disable-gpu',
+                        '--disable-dev-shm-usage',
+                        '--window-size=1920,1080',
+                    ],
                 ],
             ],
         ],
