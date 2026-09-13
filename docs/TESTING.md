@@ -309,11 +309,31 @@ server {
 }
 ```
 
-**Do not open 8443 in the EC2 security group.** Everything that talks to the
-Behat site — the CLI check Moodle makes before running, chromedriver, and the
-browser it drives — runs on this same machine, so localhost reaches it.
-Leaving the port closed to the internet keeps a site with a known admin
-password and freely resettable data off the public net.
+**Keep 8443 closed in the EC2 security group, and make the hostname resolve
+locally.** Those two go together, and leaving out the second half is how you
+get a `curl` that hangs forever instead of answering.
+
+Everything that talks to the Behat site — the CLI check Moodle makes before
+running, chromedriver, and the browser it drives — runs on this same machine.
+But the hostname resolves to the instance's *public* IP, so a request to it
+leaves the instance, comes back at the public interface, and is dropped by the
+security group. Dropped, not refused: the connection hangs until something
+times out, which reads like a server problem and is not one.
+
+Point the name at the loopback address in `/etc/hosts`:
+
+```bash
+echo '127.0.0.1 clone.example.com' | sudo tee -a /etc/hosts
+```
+
+The certificate still validates, because TLS checks the *name* presented in
+the request, not the address it resolved to. And the port stays closed to the
+internet, which matters for a site with a known admin password whose data
+anyone reaching it can reset.
+
+The alternative is to open 8443 in the security group, restricted to your own
+address. It works, and it is worse: the site is then reachable by anyone who
+finds it.
 
 Then confirm the URL answers, from the clone itself:
 
@@ -324,6 +344,33 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://clone.example.com:8443/
 A 200 or a redirect is fine. A certificate error here is the same error Behat
 will hit, because Moodle makes this exact request from the CLI before the
 first scenario.
+
+**If that command hangs rather than answering or failing**, work through these
+in order — they separate the three things that produce the same silence:
+
+```bash
+# 1. Is anything listening on 8443 at all?
+sudo ss -lntp | grep 8443
+
+# 2. What does the name resolve to, and is that one of this machine's own
+#    addresses? If it is the public IP and step 1 found a listener, the
+#    security group is eating the packets — add the /etc/hosts line above.
+getent hosts clone.example.com
+hostname -I
+
+# 3. Force the request to the loopback address, bypassing DNS entirely. If
+#    THIS works, the vhost and the certificate are both fine and the problem
+#    is only how the name resolves.
+curl -sS -o /dev/null -w '%{http_code}\n' \
+     --resolve clone.example.com:8443:127.0.0.1 \
+     https://clone.example.com:8443/
+```
+
+Read the three outcomes like this: *connection refused* immediately means
+nothing is listening — the vhost is not loaded, so check `apachectl -S` or
+`nginx -t` and whether `Listen 8443` was added. A hang means packets are being
+dropped, which is the security group. And a certificate error means the vhost
+is serving the wrong certificate for this name.
 
 ### The directories: who creates them, and what must be in them
 
