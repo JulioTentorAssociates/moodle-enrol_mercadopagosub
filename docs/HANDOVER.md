@@ -1079,6 +1079,27 @@ not narrow loading, so all 412 suites in `phpunit.xml` are built and PHPUnit
 11's `AnnotationParser` fires once per core class and method that still keeps
 `@covers` in a docblock. Ours are attributes; the count is entirely core's.
 
+**PHPUnit is green on PostgreSQL too — 2026-09-13.** pgsql 17.11 on Debian 13:
+136 tests, 370 assertions, OK, in 34s against MariaDB's 7m02s. Both engines now
+measured on a real clone, which closes what CI could only claim.
+
+**Behat's "The Selenium or WebDriver server is not running" is a hardcoded
+banner, not a diagnosis.** `behat_hooks::before_first_scenario_start_session()`
+wraps every `DriverException` from the first `@javascript` scenario in that one
+paragraph, so it appears whatever went wrong — including when the driver is
+running perfectly. Read the line under it. `session not created: Chrome
+instance exited` means chromedriver answered, launched Chrome, and Chrome died;
+an absent driver gives a curl connection error instead, and a version mismatch
+names the versions. Chrome runs as whoever chromedriver runs as, and **Chrome
+refuses to run as root without `--no-sandbox`** — measured on Chromium 1194,
+it exits immediately with that line. Measured too, and worth recording because
+it was my first guess and it was wrong: an unprivileged user whose `$HOME` is
+unwritable still renders pages fine, printing crashpad and dconf noise that
+looks fatal and is not. `docs/TESTING.md` section 1b now carries the
+three-command diagnosis, and its systemd template no longer says to set `User=`
+to the Moodle tree's owner — chromedriver never touches that tree, and on this
+stack that advice points straight at `www-data`.
+
 ## To confirm on a real site, at first install
 
 Three assertions in the tree are marked and unverified. None blocks writing code;

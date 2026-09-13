@@ -203,9 +203,20 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now chromedriver
 ```
 
-Change `User=` to whoever owns the Moodle tree. Keep it bound to localhost —
-chromedriver's default is local connections only, and it deliberately has no
-authentication.
+**`User=` must be an ordinary login user, and must not be `root`.** It does
+*not* have to match the Moodle tree's owner: chromedriver never reads the
+Moodle tree, it only answers HTTP on 9515 and launches browsers. What it must
+not be is `root` — Chrome refuses outright:
+
+```text
+Running as root without --no-sandbox is not supported.
+```
+
+and exits immediately, which surfaces two layers up as a Behat message about
+Selenium. See "Chrome instance exited" below.
+
+Keep it bound to localhost — chromedriver's default is local connections only,
+and it deliberately has no authentication.
 
 ### Checking all three before running Behat
 
@@ -220,6 +231,68 @@ That last one must answer with JSON saying *"ChromeDriver ready for new
 sessions"*. **Verified**: modern chromedriver serves this at `/`, and
 `/wd/hub/status` returns 404 — the `/wd/hub` suffix belongs to Selenium, and
 putting it in `wd_host` for chromedriver is a slow way to discover that.
+
+### "The Selenium or WebDriver server is not running" — read past it
+
+That sentence is not a diagnosis and does not mean Behat wants Selenium.
+`behat_hooks::before_first_scenario_start_session()` wraps **every**
+`DriverException` from the first `@javascript` scenario in that same
+hardcoded paragraph. The real message is the line underneath it:
+
+```text
+Could not open connection: session not created: Chrome instance exited.
+Examine ChromeDriver verbose log to determine the cause.
+```
+
+Which says the opposite of the banner: chromedriver **is** running and did
+answer — it accepted the new-session command and launched Chrome, and Chrome
+died. A chromedriver that was genuinely absent gives a curl connection error
+instead, and a version mismatch gives *"This version of ChromeDriver only
+supports Chrome version NN"*.
+
+**Chrome runs as whoever chromedriver runs as.** That is the first thing to
+check, because Chrome refuses to start as root:
+
+```bash
+# Who owns the listening process? That is who Chrome will be.
+ps -o user=,pid=,cmd= -p "$(pgrep -x chromedriver | head -1)"
+
+# Then launch Chrome by hand as that user, with the same arguments
+# behat_profiles passes. This takes Behat, Moodle and the driver out of it.
+sudo -u <that user> google-chrome --headless=new --disable-gpu \
+     --disable-dev-shm-usage --window-size=1920,1080 \
+     --dump-dom about:blank | head -3
+```
+
+A working Chrome prints `<html><head></head><body></body></html>`. Anything
+else is the actual fault, and the usual one is:
+
+```text
+Running as root without --no-sandbox is not supported.
+```
+
+The fix is to run chromedriver as an ordinary login user, not to add
+`--no-sandbox` — the flag turns off the sandbox for a browser that is about to
+load pages, and the only reason to want it is a constraint you can remove by
+changing one `User=` line. **Measured both ways on Chromium 1194**: as root
+without the flag Chrome exits at once with that line; as an unprivileged user
+whose `$HOME` is not even writable it still renders the page, printing
+crashpad and dconf complaints that look alarming and change nothing. So an
+unwritable home — `www-data`'s `/var/www`, say — is *not* what kills it.
+
+If Chrome by hand works, the fault is between chromedriver and Chrome, and
+chromedriver will say so if asked:
+
+```bash
+sudo systemctl stop chromedriver          # or kill the hand-started one
+chromedriver --port=9515 --verbose --log-path=/tmp/chromedriver.log
+# re-run Behat in another shell, then read what Chrome was actually told:
+grep -iE 'launching|chrome|exit|error' /tmp/chromedriver.log | head -40
+```
+
+The verbose log prints the full Chrome command line it built and Chrome's own
+stderr, which is where an unsupported flag or a missing library shows up by
+name.
 
 ---
 
