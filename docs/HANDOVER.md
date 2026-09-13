@@ -222,12 +222,14 @@ already respected when this component was named, before this session.
 
 **Not yet done, and larger than one session each:**
 
-- **PHPUnit suite** — 2026-09-12: **127 tests, 345 assertions, green.** See
-  "The PHPUnit suite" below. Still uncovered: `curl_transport` (needs a real
-  HTTP exchange), `admin_setting_credential` and `form/subscribe_form` (both
-  UI, and Behat's job), and `collector`'s own fetch path — see the note there.
-- **Behat suite** — written 2026-09-12, **not yet executed**: see "The Behat
-  suite" below for what was verified without a browser and what was not. The
+- **PHPUnit suite** — 2026-09-13: **141 tests, 390 assertions, green** on both
+  MariaDB and PostgreSQL, on a real clone. See "The PHPUnit suite" below. Still
+  uncovered: `curl_transport` (needs a real HTTP exchange),
+  `admin_setting_credential` and `form/subscribe_form` (both UI, and Behat's
+  job), and `collector`'s own fetch path — see the note there.
+- **Behat suite** — 2026-09-13: **10 scenarios, 143 steps, all green** on a real
+  HTTPS clone, having found two fatal bugs on the way. See "The Behat suite"
+  below. The
   sibling's real-browser, real-HTTPS acceptance tests are
   what actually proved the payment flow works end to end, not just each unit
   in isolation. This plugin has more state machine surface to exercise
@@ -972,14 +974,25 @@ register it. And the verdicts it gives for a named user are that user's own:
 run it twice, once as the teacher who cannot add the method and once as the
 learner who cannot subscribe, because they fail for different reasons.
 
-## The Behat suite — written 2026-09-12, NOT YET RUN
+## The Behat suite — green on a real HTTPS clone, 2026-09-13
 
-`tests/behat/enrol_mercadopagosub.feature`, nine scenarios, plus the data
-generator they need. **Nothing here has been executed**: Behat needs a browser
-driving a served site, and the scenarios that matter need real HTTPS, which
-the sandbox this was written in cannot provide and `moodle-plugin-ci` cannot
-either. Treat the first run on the HTTPS development site as the real test of
-this file, and expect it to find something.
+`tests/behat/enrol_mercadopagosub.feature`, ten scenarios, plus the data
+generator they need. **All ten pass**: 7 without HTTPS in about 2m32s, 3 with
+in about 1m04s, against Moodle 5.2.2 / PHP 8.4.24 / MariaDB 12.3.3, Chrome and
+chromedriver 153.0.8010.36, driven by hand — `moodle-plugin-ci` cannot run the
+three tagged ones, because they need a site served over real HTTPS.
+
+**It took four runs, and the first three each found something.** Two were fatal
+bugs in the plugin, both on the very first screen a customer reaches, both
+invisible to the unit suite because no unit test built the instance form: the
+missing `extend_assignable_roles()`, and `get_instance_defaults()` never
+overridden so the site settings reached nothing the interface could show. The
+third was the feature file's own fault — scenarios that drove the form on their
+way to testing something else, and therefore failed ambiguously. All three are
+written up in the dated sections near the end of this document.
+
+Run it before every release. On the evidence so far, this is the single highest
+yield thing in the repository per minute spent.
 
 **Seven scenarios do not need HTTPS** — adding the method, the four validation
 failures (amount not positive, amount not numeric, frequency below one,
@@ -1232,6 +1245,25 @@ That is two fatal-to-first-use bugs Behat has found in three runs, both of them
 on the very first screen of the plugin, and both invisible to 136 unit tests
 because none of those tests ever built the form. **141 tests, 390 assertions,
 green**; phpcs clean on both standards.
+
+**Fourth run, 2026-09-13: everything green.** 7 non-HTTPS scenarios / 98 steps
+in 2m32s, 3 HTTPS scenarios / 45 steps in 1m04s. Ten scenarios, 143 steps, no
+failures.
+
+What the four runs are worth recording as a lesson, because it will apply to
+the sibling plugin and to whatever comes next: **the unit suite was large,
+careful, and green throughout, and the plugin was unusable.** 136 tests covered
+every decision `can_subscribe()` makes, every state transition, the webhook
+signature, the privacy provider — and a customer could not add the enrolment
+method to a course at all. Both bugs lived in the one place no unit test
+reached, the instance form, and both were the same kind of mistake: a core hook
+called but never defined, and a core hook defined but never named correctly.
+Neither is exotic. Neither survives one browser.
+
+The corollary is about test design, not about Behat: a scenario that supplies a
+value can never discover that no default arrived, and a scenario that drives a
+form on its way somewhere else fails in the wrong place. Both bugs were found
+by scenarios that did *less*.
 
 ## To confirm on a real site, at first install
 

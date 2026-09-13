@@ -676,7 +676,8 @@ PHPUNIT_DB=pgsql php public/admin/tool/phpunit/cli/init.php --disable-composer
 PHPUNIT_DB=pgsql vendor/bin/phpunit --testsuite enrol_mercadopagosub_testsuite
 ```
 
-Expected: **136 tests, 370 assertions, green**, on both engines. The suite
+Expected: **141 tests, 390 assertions, green**, on both engines — measured
+2026-09-13 on MariaDB 12.3.3 (7m02s) and PostgreSQL 17.11 (34s). The suite
 needs no network and no credentials.
 
 ### A bare `--filter` reports thousands of PHPUnit deprecations
@@ -798,11 +799,14 @@ therefore selects Moodle's entire Behat suite — 3150+ steps, still running at
 
 ### Ten scenarios, three of which need HTTPS
 
+**All ten pass as of 2026-09-13** — 7 non-HTTPS scenarios / 98 steps in 2m32s,
+3 HTTPS scenarios / 45 steps in 1m04s, on Moodle 5.2.2 with Chrome and
+chromedriver 153.0.8010.36.
+
 Seven run anywhere: adding the method, four validation failures, the
 credentials check that fires when the method is enabled, and a manager seeing
 the method with a subscriber present. They keep *"Allow new subscriptions"* at
 No, which is what avoids the HTTPS guard while still exercising the form.
-**Green as of 2026-09-13**: 7 scenarios, 98 steps, about 2m40s.
 
 Three carry `@enrol_mercadopagosub_https` because an enabled instance is
 involved, and both `edit_instance_validation()` and `can_subscribe()` refuse
