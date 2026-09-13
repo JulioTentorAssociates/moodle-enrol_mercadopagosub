@@ -189,10 +189,14 @@ $CFG->phpunit_prefix   = 'phpu_';
 $CFG->phpunit_dataroot = '/var/moodledata_phpu';
 
 // Dual-database PHPUnit without a second Moodle. Run the suite twice:
-//   vendor/bin/phpunit ...         -> MariaDB (the site's own engine)
+//   vendor/bin/phpunit ...                  -> MariaDB (the site's own engine)
 //   PHPUNIT_DB=pgsql vendor/bin/phpunit ... -> PostgreSQL
-// Re-initialise the environment after switching, because the two engines have
-// separate test databases.
+//
+// The data directory switches with the engine, not just the database. Each
+// initialised environment keeps its state in its own dataroot, so with two of
+// them both environments exist at once and switching engines is only this
+// variable. Sharing one directory works too, but then every switch needs
+// another init.php run, because the second one overwrites the first's state.
 if (getenv('PHPUNIT_DB') === 'pgsql') {
     $CFG->dbtype    = 'pgsql';
     $CFG->dblibrary = 'native';
@@ -201,6 +205,8 @@ if (getenv('PHPUNIT_DB') === 'pgsql') {
     $CFG->dbuser    = 'moodle';
     $CFG->dbpass    = 'CHANGE_ME';
     $CFG->dboptions = ['dbpersist' => 0, 'dbsocket' => 0, 'dbport' => 5432];
+
+    $CFG->phpunit_dataroot = '/var/moodledata_phpu_pgsql';
 }
 
 // Behat. behat_wwwroot must be reachable from this machine and must be https
@@ -238,6 +244,54 @@ $CFG->behat_profiles = [
 // without it a failure is a stack trace with no picture of the page.
 $CFG->behat_faildump_path = '/var/behat_faildumps';
 ```
+
+### The directories: who creates them, and what must be in them
+
+Short answer: **create the parents, leave the directories themselves empty or
+absent, and make sure the user that runs the tests owns them.** All of the
+following was checked against the 5.2 source and by running it, not recalled.
+
+```bash
+# Only the parents have to pre-exist. /var always does, so with the paths used
+# here there is nothing to create at all — but if you nest them deeper, create
+# the intermediate levels yourself.
+sudo mkdir -p /var/moodledata_phpu /var/moodledata_phpu_pgsql \
+              /var/moodledata_behat /var/behat_faildumps
+
+# Whoever runs the tests must own them. On this stack that is www-data.
+sudo chown -R www-data:www-data /var/moodledata_phpu /var/moodledata_phpu_pgsql \
+                               /var/moodledata_behat /var/behat_faildumps
+```
+
+**PHPUnit's dataroot must be empty the first time.** If it does not yet
+contain Moodle's own `phpunittestdir.txt` marker, the bootstrap walks the
+directory and refuses on the first unexpected entry:
+
+> `$CFG->phpunit_dataroot directory is not empty, can not run tests! Is it
+> used for anything else?`
+
+Verified by pointing it at a directory holding a single stray file. Only
+`phpunit/`, `.`, `..` and `.DS_Store` are tolerated. So: a fresh empty
+directory, or none at all — never a directory you are using for something
+else, and never the site's own `dataroot` (there is a separate check for
+exactly that).
+
+**PHPUnit creates it, but not its parents.** The `mkdir()` in the bootstrap is
+not recursive. Verified: pointing it at `/tmp/pu_created/deep/nested` with no
+`/tmp/pu_created` present fails with *"directory can not be created"*. With
+`/var/moodledata_phpu` there is nothing to do, since `/var` exists.
+
+**Behat's is different in two ways.** It creates the path recursively, so
+missing parents are not a problem; and the value you set is treated as a
+*parent*: Moodle appends `behatrun` to it and works inside that. That is why
+the `--config` path in section 4 is `<behat_dataroot>/behatrun/behat/behat.yml`
+rather than sitting directly in the directory you named. Behat also refuses a
+`behat_dataroot` equal to either `dataroot` or `phpunit_dataroot`, which is
+another reason the pgsql branch above gets its own.
+
+**Nothing here needs to be preserved.** Both directories are scratch: the init
+scripts populate them and the test runs rewrite them. Deleting either one
+between runs costs you an `init.php`, nothing more.
 
 ### What you do *not* need to add, and why
 
@@ -281,7 +335,8 @@ vendor/bin/phpunit --testsuite enrol_mercadopagosub_testsuite
 vendor/bin/phpunit public/enrol/mercadopagosub/tests/privacy_provider_test.php
 vendor/bin/phpunit --filter test_a_missed_charge_becomes_overdue
 
-# The other engine.
+# The other engine. Init it once; after that, switching is only the variable,
+# because each engine has its own dataroot as well as its own database.
 PHPUNIT_DB=pgsql php public/admin/tool/phpunit/cli/init.php
 PHPUNIT_DB=pgsql vendor/bin/phpunit --testsuite enrol_mercadopagosub_testsuite
 ```
