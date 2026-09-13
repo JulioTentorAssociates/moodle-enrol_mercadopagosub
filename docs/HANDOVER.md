@@ -1090,15 +1090,40 @@ paragraph, so it appears whatever went wrong — including when the driver is
 running perfectly. Read the line under it. `session not created: Chrome
 instance exited` means chromedriver answered, launched Chrome, and Chrome died;
 an absent driver gives a curl connection error instead, and a version mismatch
-names the versions. Chrome runs as whoever chromedriver runs as, and **Chrome
-refuses to run as root without `--no-sandbox`** — measured on Chromium 1194,
-it exits immediately with that line. Measured too, and worth recording because
-it was my first guess and it was wrong: an unprivileged user whose `$HOME` is
-unwritable still renders pages fine, printing crashpad and dconf noise that
-looks fatal and is not. `docs/TESTING.md` section 1b now carries the
-three-command diagnosis, and its systemd template no longer says to set `User=`
-to the Moodle tree's owner — chromedriver never touches that tree, and on this
-stack that advice points straight at `www-data`.
+names the versions.
+
+**Chrome runs as whoever chromedriver runs as, and that user needs a home it
+can write.** This was the cause on the clone, found by launching Chrome by hand
+with the arguments from `behat_profiles`: chromedriver had been started as
+`www-data`, whose home is `/var/www`, and Chrome died on `mkdir: cannot create
+directory '/var/www/.local': Permission denied` →
+`Failed to create headless user data directory container`. `--user-data-dir`
+does not rescue it — chromedriver already passes one under `/tmp`, and headless
+Chrome still wants its container and crashpad database under `$HOME`. In the
+verbose log the entire failure is the single line
+`chrome_crashpad_handler: --database is required`, which is why the by-hand
+launch found it and the log alone would not have. Measured on Google Chrome
+153.0.8010.36, Debian 13.
+
+**I asserted the opposite one turn earlier, and it was wrong.** I had measured
+Chromium 1194 with an unwritable `$HOME` in a sandbox, watched it render the
+page through crashpad and dconf noise, and wrote into both documents that an
+unwritable home is *not* what kills Chrome. Google Chrome 153's headless mode
+does not behave like that build did, and I generalised from one binary to
+another. Both documents are corrected. The root case stands and was also
+measured: root without `--no-sandbox` exits with *"Running as root without
+--no-sandbox is not supported"*.
+
+Two hypotheses checked and eliminated on the way, both worth keeping because
+they cost time: the driver/Chrome versions matched to the build (153.0.8010.36
+on both), and Debian 13's AppArmor restriction on unprivileged user
+namespaces — real, and a genuine cause of this exact symptom on some Debian and
+Ubuntu builds, but this kernel has no
+`kernel.apparmor_restrict_unprivileged_userns` at all. `docs/TESTING.md`
+section 1b now carries both live causes, both eliminated ones, and a systemd
+template that no longer says to set `User=` to the Moodle tree's owner —
+chromedriver never touches that tree, and on this stack that advice points
+straight at `www-data`, which is precisely the user that cannot run Chrome.
 
 ## To confirm on a real site, at first install
 

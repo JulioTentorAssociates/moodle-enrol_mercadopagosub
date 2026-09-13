@@ -203,17 +203,14 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now chromedriver
 ```
 
-**`User=` must be an ordinary login user, and must not be `root`.** It does
-*not* have to match the Moodle tree's owner: chromedriver never reads the
-Moodle tree, it only answers HTTP on 9515 and launches browsers. What it must
-not be is `root` — Chrome refuses outright:
-
-```text
-Running as root without --no-sandbox is not supported.
-```
-
-and exits immediately, which surfaces two layers up as a Behat message about
-Selenium. See "Chrome instance exited" below.
+**`User=` must be an ordinary login user with a home directory it can write,
+and must not be `root` or `www-data`.** It does *not* have to match the Moodle
+tree's owner — chromedriver never reads the Moodle tree, it only answers HTTP
+on 9515 and launches browsers — and on this stack matching the web user is
+what breaks it, because `www-data`'s home is `/var/www`, which it does not
+own. Chrome dies on either count, immediately and without rendering, and it
+surfaces two layers up as a Behat message about Selenium. See "Chrome instance
+exited" below for both messages and the fix.
 
 Keep it bound to localhost — chromedriver's default is local connections only,
 and it deliberately has no authentication.
@@ -265,23 +262,69 @@ sudo -u <that user> google-chrome --headless=new --disable-gpu \
 ```
 
 A working Chrome prints `<html><head></head><body></body></html>`. Anything
-else is the actual fault, and the usual one is:
+else is the actual fault. Two produce this symptom, and on this stack the
+second is the one you will hit.
+
+**The user must have a writable home directory.** Run chromedriver as
+`www-data` — whose home is `/var/www`, which it does not own — and Chrome dies
+before it renders anything:
+
+```text
+mkdir: cannot create directory '/var/www/.local': Permission denied
+[ERROR:chrome/app/chrome_main.cc:210] Failed to create headless user data
+directory container.
+```
+
+Passing `--user-data-dir` does not save it: chromedriver already passes one
+under `/tmp`, and headless Chrome still wants its container and its crashpad
+database under `$HOME`. In the verbose log the whole failure is one line,
+`chrome_crashpad_handler: --database is required`, followed by the session
+error — which is why the log is worth reading beside the by-hand launch rather
+than instead of it. **Measured on Google Chrome 153.0.8010.36, Debian 13.**
+
+So chromedriver runs as an ordinary login user, whose home it can write. It
+never reads the Moodle tree, so there is nothing to gain by matching the web
+user, and on a Debian stack matching the web user is exactly what breaks it.
+Behat itself still runs as `www-data`, because Behat does need the Moodle
+dataroot; the two do not have to agree.
+
+If some constraint forces chromedriver to run as `www-data`, give it a home it
+owns rather than loosening `/var/www`:
+
+```bash
+sudo install -d -o www-data -g www-data /var/lib/chromedriver
+sudo -u www-data env HOME=/var/lib/chromedriver chromedriver --port=9515
+```
+
+In the systemd unit that is `Environment=HOME=/var/lib/chromedriver`.
+
+**The other one is root**, which Chrome refuses outright:
 
 ```text
 Running as root without --no-sandbox is not supported.
 ```
 
-The fix is to run chromedriver as an ordinary login user, not to add
-`--no-sandbox` — the flag turns off the sandbox for a browser that is about to
-load pages, and the only reason to want it is a constraint you can remove by
-changing one `User=` line. **Measured both ways on Chromium 1194**: as root
-without the flag Chrome exits at once with that line; as an unprivileged user
-whose `$HOME` is not even writable it still renders the page, printing
-crashpad and dconf complaints that look alarming and change nothing. So an
-unwritable home — `www-data`'s `/var/www`, say — is *not* what kills it.
+The fix there is the same `User=` line, not `--no-sandbox` — the flag turns off
+the sandbox for a browser that is about to load pages, and the only reason to
+want it is a constraint you can remove by changing one word. Measured on
+Chromium 1194.
 
-If Chrome by hand works, the fault is between chromedriver and Chrome, and
-chromedriver will say so if asked:
+Two things this is *not*, both checked here before the real cause turned up:
+
+- **A version mismatch.** That names itself — *"This version of ChromeDriver
+  only supports Chrome version NN"*. `google-chrome --version` and
+  `chromedriver --version` matching to the build, as they should after
+  section 1b, rules it out.
+- **Debian 13's AppArmor restriction on unprivileged user namespaces**, which
+  does break Chromium's sandbox on some Debian and Ubuntu builds with exactly
+  this symptom and no further detail. Check before believing it:
+  `sudo sysctl kernel.apparmor_restrict_unprivileged_userns`. If the file does
+  not exist, this kernel does not have the restriction and it is not your
+  problem.
+
+The verbose log prints the full Chrome command line it built and Chrome's own
+stderr, which is where an unsupported flag or a missing library shows up by
+name:
 
 ```bash
 sudo systemctl stop chromedriver          # or kill the hand-started one
@@ -289,10 +332,6 @@ chromedriver --port=9515 --verbose --log-path=/tmp/chromedriver.log
 # re-run Behat in another shell, then read what Chrome was actually told:
 grep -iE 'launching|chrome|exit|error' /tmp/chromedriver.log | head -40
 ```
-
-The verbose log prints the full Chrome command line it built and Chrome's own
-stderr, which is where an unsupported flag or a missing library shows up by
-name.
 
 ---
 
