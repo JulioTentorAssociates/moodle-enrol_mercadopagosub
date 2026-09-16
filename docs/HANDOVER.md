@@ -1416,12 +1416,55 @@ statements about the code — two of which were features a user would configure
 and then wait for. Prose gets no compiler. The check has to be a separate pass
 that reads the source and is looking to disagree.
 
-## Functional backlog — assembled 2026-09-16
+## Decisions held open for the plugins directory — 2026-09-16
+
+**Two fields in `version.php` are knowingly wrong together, and Julio has ruled
+that they stay that way until this plugin is actually being proposed to the
+Moodle plugins directory.** They are recorded here rather than fixed because
+both depend on a date that has not been chosen, and both would otherwise be
+"fixed" twice.
+
+**1. `$plugin->maturity = MATURITY_ALPHA` alongside `$plugin->release =
+'v1.0.1'`.** A directory reviewer reads a v1.x release string as a promise of
+stability and ALPHA as a denial of one. Today ALPHA is the honest half: the
+plugin has never run in production, and production use is expected at v1.1.\*
+or v1.2.\*. When it is proposed, one of the two has to move — most likely
+maturity to BETA or STABLE, on the strength of a production deployment rather
+than of the test suites, however green they are. Two fatal bugs got past 136
+green unit tests in this repository; that is the argument for waiting.
+
+**2. `$plugin->requires = 2026042002`, the 5.2 branch point, while the
+supported release is 5.2.3 or later.** From v1.0.1 this plugin targets 5.2.3
+and is not tested against 5.2.2. Moodle's own advice is to skip 5.2.2, which
+carries a grade-calculation defect 5.2.3 fixes — the defect that took Julio's
+own site out of service. Guaranteeing a plugin on a release its vendor tells
+people not to run is work in the wrong place.
+
+The branch point therefore lets Moodle install this plugin on 5.2.0–5.2.2,
+which nobody should be running and which nothing here is tested against.
+Tightening it means naming the exact build: `requires` accepts the decimal part,
+so 5.2.3's own `$version` from `public/version.php` is the value that goes in.
+**Read it off the tag being targeted at the time, not off a memory of it** —
+the value in this document today (`2026042002.04`) is 5.2.2+, and was measured
+in September 2026.
+
+Both fields carry a comment in `version.php` pointing back here, so neither can
+be changed by accident without meeting this reasoning first.
+
+## Functional backlog — targeted at v1.1.\*, assembled 2026-09-16
+
+**Julio's ruling, 2026-09-16: everything in the "declared but not implemented"
+table below, and any new functionality still under consideration, is v1.1.\*.**
+v1.0.1 is the 5.2.3-tested release and adds no behaviour. That keeps the version
+that changes the supported Moodle release separate from the version that changes
+what the plugin does, which is worth the extra tag when something goes wrong on
+a customer site.
+
 
 Everything outstanding that is *functionality*, in one place, so that the
 decision about what goes in before the plugins directory and what goes after can
-be made against a list rather than a memory. Nothing here blocks the current
-release; several items are visible to a user, which is a different thing.
+be made against a list rather than a memory. Nothing here blocks v1.0.1; several
+items are visible to a user, which is a different thing.
 
 **Declared but not implemented** — a user can configure these today and get
 silence. Each one is a promise the plugin already makes in its own interface:

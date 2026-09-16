@@ -5,14 +5,51 @@ All notable changes to `enrol_mercadopagosub` are recorded here. Versions follow
 `version.php` is the date-based number Moodle requires and moves with every
 release.
 
-## [Unreleased]
+## [v1.1.0] — planned
 
-Nothing yet.
+Reserved for the **unfulfilled promises** listed under *Known limitations*
+below, and for functionality still under consideration. Nothing is committed to
+this version yet.
+
+The three that a user can already configure and get silence from:
+
+- Sending the course welcome message.
+- Cancelling a subscription from Moodle
+  (`enrol/mercadopagosub:cancelsubscription`).
+- A subscription and payment report
+  (`enrol/mercadopagosub:viewsubscriptions`).
+
+## [v1.0.1] — in progress
+
+**Target: Moodle 5.2.3.**
+
+### Changed
+
+- **The supported Moodle version is 5.2.3 or later. 5.2.2 is not supported.**
+  Moodle's own advice is to skip 5.2.2 and upgrade to 5.2.3 directly, because
+  5.2.3 fixes a grade-calculation defect in 5.2.2. Guaranteeing this plugin on a
+  release its own vendor tells people not to run would be work spent in the
+  wrong place, so from here the test clone, the CI matrix and every *verified*
+  claim in the documentation are against 5.2.3.
+
+  `$plugin->requires` still names the 5.2 branch point (`2026042002`), so Moodle
+  will currently let you install on 5.2.0–5.2.2. That is not a supported
+  configuration. Whether to tighten `requires` to the exact 5.2.3 build is one
+  of the decisions held open until this plugin is proposed to the Moodle plugins
+  directory — see `docs/HANDOVER.md`.
+
+### In progress
+
+Work continues on the backlog in `docs/HANDOVER.md`. Anything that adds
+behaviour — the three capabilities and settings that are declared but do
+nothing, and any new functionality — is targeted at v1.1.0, not at this
+release.
 
 ## [v1.0.0] — 2026-09-13
 
-First release. Not published to the Moodle plugins directory, and not yet run in
-production; `$plugin->maturity` is the authority on how far to trust it.
+First release, and closed as it stands. Not published to the Moodle plugins
+directory and not run in production; `$plugin->maturity` is the authority on how
+far to trust it. Developed and verified against Moodle 5.2.2.
 
 ### Added
 
@@ -116,5 +153,5 @@ recorded here because the lesson is more useful than the diff.
   The preapproval must be cancelled in the seller's dashboard by a person. See
   `docs/INSTALL.md`.
 
-[Unreleased]: https://github.com/jtentor/moodle-enrol_mercadopagosub/compare/v1.0.0...HEAD
+[v1.0.1]: https://github.com/jtentor/moodle-enrol_mercadopagosub/compare/v1.0.0...HEAD
 [v1.0.0]: https://github.com/jtentor/moodle-enrol_mercadopagosub/releases/tag/v1.0.0

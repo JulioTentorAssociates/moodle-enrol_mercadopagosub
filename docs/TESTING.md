@@ -10,16 +10,23 @@ This file exists because that is exactly what happened once already: the clone
 that carried these settings was destroyed and the configuration went with it.
 It is versioned here so the next clone is a copy-paste away.
 
+**Build the clone from Moodle 5.2.3 or later.** From plugin v1.0.1 that is the
+supported release and the only one this plugin is tested against; 5.2.2 is not
+supported, on Moodle's own advice to skip it.
+
 Everything marked **verified** below was checked against Moodle 5.2.2+ source
-(`a987843`) rather than recalled. Paths, database names and the domain are
-yours to adjust; the setting names and the behaviour are not.
+(`a987843`) rather than recalled, in September 2026. 5.2.3 is a point release on
+the same branch and none of these mechanisms are expected to have moved, but
+that is an expectation rather than a measurement: re-check a *verified* claim
+before relying on it against 5.2.3 if it matters. Paths, database names and the
+domain are yours to adjust; the setting names and the behaviour are not.
 
 ---
 
 ## 1. What the clone needs
 
-- The same Moodle release as production, with this plugin in
-  `public/enrol/mercadopagosub`.
+- The same Moodle release as production — **5.2.3 or later** — with this plugin
+  in `public/enrol/mercadopagosub`.
 - PHP 8.3 or 8.4 with `pgsql`/`mysqli`, `curl`, `json`, `intl`, `mbstring`,
   `zip`, `gd`, `soap`, `xml`, and `max_input_vars` of at least 5000. Moodle
   refuses to initialise the PHPUnit environment below that number.

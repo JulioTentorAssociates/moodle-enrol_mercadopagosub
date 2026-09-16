@@ -8,7 +8,7 @@ grants, keeps or withdraws the enrolment accordingly.
 Payment happens entirely on Mercado Pago. This site never sees card data.
 
 - **Component**: `enrol_mercadopagosub`
-- **Requires**: Moodle 5.2 or later (`$plugin->requires = 2026042002`)
+- **Requires**: Moodle **5.2.3** or later — see [Supported Moodle versions](#supported-moodle-versions)
 - **Licence**: [GPL v3 or later](LICENSE)
 - **Maintainer**: Julio Tentor & Associates — <https://juliotentor.com>
 
@@ -49,9 +49,21 @@ its own credentials and its own Mercado Pago application.
 Not yet implemented, though the instance form already collects it: sending the
 course welcome message. See [`CHANGES.md`](CHANGES.md).
 
-## Requirements
+## Supported Moodle versions
 
-- Moodle 5.2 or later.
+**Moodle 5.2.3 or later. 5.2.2 is not supported.**
+
+Moodle's own advice is to skip 5.2.2 and upgrade straight to 5.2.3, which fixes
+a grade-calculation defect in it. This plugin is developed, tested and verified
+against 5.2.3 from v1.0.1 onwards.
+
+`$plugin->requires` currently names the 5.2 branch point rather than the 5.2.3
+build, so Moodle will let you install on an earlier 5.2 — that is not a
+supported configuration, and tightening it is one of the decisions held open
+until this plugin is proposed to the plugins directory
+([`docs/HANDOVER.md`](docs/HANDOVER.md)).
+
+## Requirements
 - PHP 8.3 or 8.4, with `curl`, `json`, `intl` and `mbstring`.
 - **The site must be served over HTTPS.** The plugin refuses to enable an
   enrolment method on a plain-HTTP site, and refuses to start a subscription on

@@ -76,6 +76,13 @@ jobs:
       fail-fast: false
       matrix:
         php: ['8.3', '8.4']
+        # The branch, not a tag, and deliberately. From v1.0.1 the supported
+        # release is 5.2.3 or later — 5.2.2 is not supported, on Moodle's own
+        # advice to skip it for a grade-calculation defect 5.2.3 fixes — and the
+        # tip of MOODLE_502_STABLE is 5.2.3 and everything after it. Pinning a
+        # 5.2.3 tag would test the floor and stop noticing the ceiling, which is
+        # the wrong way round for a plugin whose whole compatibility question is
+        # "does it still work on current 5.2".
         moodle-branch: ['MOODLE_502_STABLE']
         database: ['pgsql', 'mariadb']
 

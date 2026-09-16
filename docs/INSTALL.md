@@ -35,7 +35,11 @@ step is actual configuration.
 
 You will also need:
 
-- Moodle 5.2 or later.
+- **Moodle 5.2.3 or later.** 5.2.2 is not supported: Moodle's own advice is to
+  skip it and upgrade straight to 5.2.3, which fixes a grade-calculation defect
+  in it, and this plugin is tested against 5.2.3 only. Moodle will currently
+  *let* you install on an earlier 5.2, because `$plugin->requires` still names
+  the branch point — do not.
 - PHP 8.3 or 8.4 with `curl`, `json`, `intl` and `mbstring`.
 - Cron running on a normal schedule. Four scheduled tasks do the work between
   notifications, and a site whose cron is stalled will look like a plugin that
