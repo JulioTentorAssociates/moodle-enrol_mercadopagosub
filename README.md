@@ -126,6 +126,12 @@ Not yet published to the Moodle plugins directory, and not yet running in
 production. `$plugin->maturity` says where it actually stands; treat it as the
 authority, not this paragraph.
 
+## AI-Assisted Technology Statement
+
+During the development and documentation of this project, the large language models Claude Opus 5 (Anthropic, 2026), ChatGPT GPT-5.6 Sol (OpenAI, 2026), GitHub Copilot (Microsoft, 2026) and Gemini 3.1 Pro (Google, 2026) were used.
+
+Specifically, these tools were employed as technical assistants for the architecture and code generation of a Moodle enrolment plugin, streamlining scriptwriting, system file structuring, and software debugging. To ensure security, compliance with Moodle development standards, and overall software reliability, all code and logic they generated was thoroughly verified, tested, and critically edited by the author before final implementation. The author maintains full accountability for the functionality, accuracy, and originality of the work presented.
+
 ## Licence
 
 Copyright 2026 Julio Tentor & Associates <https://juliotentor.com>
@@ -134,3 +140,25 @@ This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
 Foundation, either version 3 of the License, or (at your option) any later
 version. See [LICENSE](LICENSE).
+
+## References
+
+The API documentation this plugin was built against, and the Moodle
+subsystems it implements:
+
+- [Mercado Pago — Create subscription (preapproval)](https://www.mercadopago.com.ar/developers/en/reference/subscriptions/_preapproval/post) — the *subscription without an associated plan* model this plugin uses
+- [Mercado Pago — Webhooks and `x-signature` validation](https://www.mercadopago.com.ar/developers/en/docs/subscriptions/additional-content/your-integrations/notifications/webhooks)
+- [Moodle — Enrolment plugins](https://moodledev.io/docs/5.2/apis/plugintypes/enrol)
+- [Moodle — Privacy API](https://moodledev.io/docs/5.2/apis/subsystems/privacy)
+- [Moodle — Task API](https://moodledev.io/docs/5.2/apis/subsystems/task)
+
+**This plugin does not use the Mercado Pago PHP SDK.** It calls the API
+directly over `curl`, which is why there is no `thirdpartylibs.xml` and no
+vendored dependency to keep in step with upstream.
+
+The AI tools named in the statement above:
+
+- [Anthropic. Claude Opus 5](https://claude.ai)
+- [OpenAI. ChatGPT GPT-5.6 Sol](https://chat.openai.com)
+- [Microsoft. GitHub Copilot](https://github.com/features/copilot)
+- [Google. Gemini 3.1 pro](https://gemini.google.com/)
