@@ -243,11 +243,11 @@ already respected when this component was named, before this session.
 - ~~**Privacy provider.**~~ Written 2026-09-12 — see the section above.
 - ~~**CI**~~ — `.github/workflows/ci.yml` added 2026-09-12, see "CI" below.
   Never executed, so treat its first run as a measurement, not a formality.
-- **README, `docs/INSTALL.md`, `docs/TROUBLESHOOTING.md`, `CHANGES.md`.** None
-  exist yet (`docs/TESTING.md` does, as of 2026-09-12 — it carries the
-  config.php a test clone needs, which was lost once already when the clone
-  carrying it was destroyed). `docs/INSTALL.md` already has a running list of notes owed to it,
-  below — that list should become the actual document, not stay a scratch pad.
+- ~~**README, `docs/INSTALL.md`, `docs/TROUBLESHOOTING.md`, `CHANGES.md`.**~~
+  All four written 2026-09-16, and fact-checked against the tree rather than
+  against memory — see "The documentation pass" below, which is also where the
+  nine things that check found are recorded. Four of the nine were the code
+  being wrong or incomplete, not the prose.
 - **Screenshots**, required by the plugins directory listing itself, not by
   the code. Cannot happen before there is a working UI to screenshot, which
   means after the Behat suite is green on a real site, not before.
@@ -1348,7 +1348,126 @@ all three have to be settled before anything is called a release.
 - **Resuming a paused subscription after `next_payment_date` has passed.** Out of
   scope by design, but worth knowing. Compressible with a 1-day frequency.
 
-## Notes owed to `docs/INSTALL.md`
+## The documentation pass — 2026-09-16
+
+`README.md`, `docs/INSTALL.md`, `docs/TROUBLESHOOTING.md` and `CHANGES.md`
+written. Every setting name, capability, task, CLI flag, URL, form label and
+state value in them was then checked against the source by a separate pass
+whose only job was to disagree. **Nine discrepancies, and four of them were the
+code, not the documents:**
+
+1. **The subscriber cap does not count `pending`.** `can_subscribe()` counts
+   `trialing`, `active` and `overdue` only. The open question recorded in this
+   document was right and the draft prose had it backwards. Consequence worth
+   stating plainly: a course **can oversell** if several people authorise at
+   once. The alternative — counting `pending` — means an abandoned checkout
+   locks a seat. Still open; now written down in `CHANGES.md` where a user will
+   see it.
+2. **The course welcome message is never sent.** `edit_instance_form()` collects
+   *Send course welcome message* (`customint4`) and the body (`customtext1`),
+   `get_instance_defaults()` supplies a default, and **nothing in the tree ever
+   sends anything**. There is no call to `send_course_welcome_message_to_user()`
+   or any equivalent. A user configuring it today gets silence. Recorded as a
+   known limitation and added to the backlog below.
+3. **`cli/diagnose.php` reaches the network without `--checkaccount`.** The help
+   text and this document both claimed that flag was the only thing that calls
+   the API. It is the only thing that calls it *deliberately*:
+   `collector::resolve_currency()` runs unconditionally and falls through to
+   `collector::load()` → `api_client::get_account()` whenever the `currency`
+   setting is blank and the cache is cold. Documented as it is; whether to
+   change the behaviour is a decision, not a bug fix.
+4. **`settings.php` said `expiredaction` was a no-op. It is not.** Corrected in
+   place. `enrol_plugin::process_expirations()` in `public/lib/enrollib.php`
+   begins with `$this->get_config('expiredaction', ...)`, read through the
+   component-scoped config API, so registering
+   `classes/task/process_expirations.php` — a thin wrapper round the base
+   implementation — is the entire wiring. A plugin needs its own override only
+   to do something *different*. The MDL-66786 no-op claim is about enrol_self's
+   own history and does not transfer. This document had it right and the
+   settings docblock had it wrong; they no longer disagree.
+
+The other five were prose, and are fixed: `signaturestatus` takes
+`absent`/`verified`/`failed` and never `invalid`; an unverified notification is
+still acted on, deliberately, because the plugin trusts only the identifier and
+re-reads the subscription from the API; the diagnostics report last run but not
+next run; CI does not run Behat **at all**, rather than running seven of ten;
+and CI's phpcs runs the `moodle` standard only, with `moodle-extra` checked by
+hand.
+
+**Two more capabilities turned out to gate nothing**, found while writing the
+roles table and the same class of fault as the welcome message:
+
+- **`enrol/mercadopagosub:cancelsubscription`** is declared in `db/access.php`
+  and **no code anywhere checks it**. There is no way to cancel a subscription
+  from Moodle at all. The working path is to cancel the preapproval in the
+  Mercado Pago dashboard: `event_processor` maps `cancelled` → `state = ended`,
+  `endreason = cancelled_by_mp`, so `reconcile_payments` closes the row within
+  15 minutes even if the notification is lost. That is why this is a gap rather
+  than a blocker — but the capability promises a button that does not exist.
+- **`enrol/mercadopagosub:viewsubscriptions`** is checked in exactly one place,
+  `paymentlink.php`, as one of a capability pair. There is no screen listing who
+  is subscribed, their payments, or the paying account — which is what both the
+  capability's own description and this document's coexistence section imply it
+  is for.
+
+**The lesson is the same one the Behat runs taught, one level up.** Writing
+documentation from a correct mental model of the code produced four false
+statements about the code — two of which were features a user would configure
+and then wait for. Prose gets no compiler. The check has to be a separate pass
+that reads the source and is looking to disagree.
+
+## Functional backlog — assembled 2026-09-16
+
+Everything outstanding that is *functionality*, in one place, so that the
+decision about what goes in before the plugins directory and what goes after can
+be made against a list rather than a memory. Nothing here blocks the current
+release; several items are visible to a user, which is a different thing.
+
+**Declared but not implemented** — a user can configure these today and get
+silence. Each one is a promise the plugin already makes in its own interface:
+
+| | Where the promise is made |
+| --- | --- |
+| Send the course welcome message | Instance form: *Send course welcome message* + body, both stored |
+| Cancel a subscription from Moodle | `enrol/mercadopagosub:cancelsubscription`, gates nothing |
+| A subscription / payment report | `enrol/mercadopagosub:viewsubscriptions`, only opens the payment link page |
+
+Of the three, **cancellation is the one a real site will miss first**: the
+workaround (cancel at Mercado Pago, let reconciliation close the row) works and
+is documented, but it sends an administrator to a different system to do
+something the capability says they can do here.
+
+**Open decisions, no code needed until they are settled:**
+
+| | |
+| --- | --- |
+| Subscriber cap counts `trialing`/`active`/`overdue`, not `pending` | So a course can oversell. Counting `pending` means an abandoned checkout locks a seat. Neither is obviously right |
+| Privacy: deletion vs anonymisation | Currently deletes the subscriber's rows outright |
+| `collector::load()` takes no injected `api_client` | Testability only; the fetch path is the one part of `collector` no test reaches |
+| `cli/diagnose.php` calls the API without `--checkaccount` | Via `resolve_currency()`. Documented as-is; whether to make the plain run truly offline is a choice |
+| `$plugin->maturity` vs `$plugin->release` | `MATURITY_ALPHA` alongside `v1.0.0`. Both cannot be right for the plugins directory |
+
+**Measured limits of the platform, not things to build:**
+
+- Trial state detection — Mercado Pago's `status` does not distinguish
+  authorised-during-trial from authorised-and-paying, so the plugin infers the
+  trial from its own dates and never sets `trialing` from a notification.
+- The guest payment path cannot be exercised in a test environment at all.
+
+**Closed by having a real site, 2026-09-13:** whether
+`core_enrol\output\enrol_page` exists in 5.2 and should replace the
+`$OUTPUT->box()` + `single_button` construction in `enrol_page_hook()`. The
+current construction is now known to render correctly in a browser — two Behat
+scenarios assert on what a learner sees — so this is a refinement, not an
+unknown.
+
+## Notes owed to `docs/INSTALL.md` — absorbed 2026-09-16
+
+All of these are now in `docs/INSTALL.md` or `docs/TROUBLESHOOTING.md`, except
+the multilang one, which turned out not to apply: this plugin ships no welcome
+template and sends no welcome message, so there is nothing for the filter to
+render. It belongs to the sibling plugin's experience, not this one's. Kept
+here for the record.
 
 - **Handling a data deletion request for an active subscriber**: deleting the
   site's record does not cancel the subscription at Mercado Pago, which keeps

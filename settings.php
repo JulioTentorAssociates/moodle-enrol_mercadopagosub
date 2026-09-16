@@ -28,13 +28,17 @@
  * screen. Nothing here should be read as "this is the complete set of settings
  * this plugin will ever have."
  *
- * expiredaction is registered here, but declaring it is not the same as it
- * doing anything. enrol_self ships exactly this setting and it is a documented
- * no-op (MDL-66786): the string is a select box that goes nowhere unless the
- * plugin's own lib.php reads it back and acts on it, the way enrol_manual does
- * in its own process_expirations(). That override does not exist yet in this
- * plugin's lib.php. Until it does, this setting is honest about existing and
- * dishonest about doing anything.
+ * expiredaction does work, and an earlier version of this comment said it did
+ * not. Corrected 2026-09-16 against the 5.2 source: enrol_plugin itself
+ * implements process_expirations() (public/lib/enrollib.php), and the first
+ * thing it does is $this->get_config('expiredaction', ...) — the plugin's own
+ * setting, read through the component-scoped config API. A plugin only needs
+ * its own override to do something *different*, the way enrol_manual does; ours
+ * wants the standard behaviour, so classes/task/process_expirations.php is a
+ * thin wrapper that calls the base implementation and that is the whole wiring.
+ * Registering the task is what makes the setting live. The no-op claim about
+ * enrol_self (MDL-66786) is about that plugin's own history and does not
+ * transfer.
  *
  * expirynotifylast is deliberately absent. No enrol plugin surveyed
  * (enrol_manual, enrol_self, enrol_credit, enrol_apply) exposes it as an
